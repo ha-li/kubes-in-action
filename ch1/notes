@@ -1,0 +1,9 @@
+minikube is a binary that allows you to run a single instance kubernetes cluster
+-it is great for testing kubernetes and developing apps locally
+
+to start minikube:
+   > minikube start
+
+to stop minikube:
+   > minikube stop
+
