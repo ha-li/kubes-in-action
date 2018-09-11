@@ -1,9 +1,45 @@
 minikube is a binary that allows you to run a single instance kubernetes cluster
 -it is great for testing kubernetes and developing apps locally
 
+best documentation for installing minikube is here
+https://github.com/kubernetes/minikube
+
 to start minikube:
    > minikube start
 
 to stop minikube:
    > minikube stop
 
+to ssh into minikube:
+   > minikube ssh
+
+=======================
+
+To interact with Kubernetes, you will need kubectl cli client.
+To install kubectl, run:
+   > curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/darwin/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+
+   to see the components of your cluster:
+   > kubectl cluster-info
+
+   to see all the nodes in your cluster:
+   > kubectl get nodes
+
+   to describe a node
+   > kubectl describe node <node-name>
+
+   to run an docker image on kubernetes cluster (for a replication controller)
+   > kubectl run kubia --image=haja/kubia --port=8080 --generator=run/v1
+
+   to get all the pods
+   > kubectl get pods
+
+   to describe a pod
+   > kubectl describe pod <pod-name>
+
+
+kubernetes does not run individual containers, rather, it runs them inside pods. so containers can
+be co-located in pods. 
+
+
+ 
