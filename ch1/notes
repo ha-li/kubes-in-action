@@ -13,6 +13,9 @@ to stop minikube:
 to ssh into minikube:
    > minikube ssh
 
+to get the dashboard for minikube
+   > minikube dashboard
+
 =======================
 
 To interact with Kubernetes, you will need kubectl cli client.
@@ -37,9 +40,38 @@ To install kubectl, run:
    to describe a pod
    > kubectl describe pod <pod-name>
 
+   to get the service objects
+   > kubectl get services
+
+   to get the number of replication controllers
+   > kubectl get rc
+ 
+   to scale the replica pods
+   > kubectl scale rc <name> --replicas=3 
+      eg: kubectl scale rc kubia --replicas=3   (creates 3 pods)
+
+   to describe a pod
+   > kubectl describe pod <pod id>
+
+   to create a load balancer (rc = replicationcontroller) (minikube does not support LoadBalancer service)
+   > kubectl expose rc kubia --type=LoadBalancer --name kubia-http
+
+   minikube does not support the LoadBalancer type service, so to get the ip address of the service
+   > minikube service kubia-http (kubia-http is the name returned by kubectl get services)
 
 kubernetes does not run individual containers, rather, it runs them inside pods. so containers can
 be co-located in pods. 
 
+a node has 1 or more pods.
+each pod has its own ip address.
+a pod can have 1 or more containner.
 
+when you run kubectl run to deploy a node (on some central deployment machine), 
+this sends an HTTP request to the Kubernetes API server to create a ReplicationController.
+The ReplicationController creates a new pod, which gets scheduled to one of the worker nodes by the Scheduler.
+The Kubelet on that node sees a pod was scheduled to it, does a docker pull command to retrive the Docker image and
+create a new container and run it.
+ ( scheduling means assigning a pod to a node to be run immediately)
+
+even though each pod has it's own ip address
  
