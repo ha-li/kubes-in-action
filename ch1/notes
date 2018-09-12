@@ -66,6 +66,22 @@ a node has 1 or more pods.
 each pod has its own ip address.
 a pod can have 1 or more containner.
 
+
+Typically when you use kubernetes, you will prepare a manifest (json or yml) file declaring each
+component you want to deploy. This manifest will have its own format.
+
+On your own desktop, you can just run kubectl commands to deploy the components.
+
+Typical components will be your load balancer, a replication controller which controls 
+your scaling replica and more.
+
+  eg to deploy a replica responsible for deploying a docker image:
+  > kubectl run <component name> --image=<image id> --port=<port> --generator=run/v1
+    kubectl run kubia --image=haja/kubia --port=8080 --generator=run/v1
+
+    this will deploy a replication contoller naminng it kubia, that will control
+    containers built from the image 'haja/kubia', open port 8080.
+
 when you run kubectl run to deploy a node (on some central deployment machine), 
 this sends an HTTP request to the Kubernetes API server to create a ReplicationController.
 The ReplicationController creates a new pod, which gets scheduled to one of the worker nodes by the Scheduler.
@@ -74,4 +90,31 @@ create a new container and run it.
  ( scheduling means assigning a pod to a node to be run immediately)
 
 even though each pod has it's own ip address
- 
+
+
+Pods 
+Kubernetes components run in pods. Each pod will house 1 or more container.
+Each pod will run on exactly 1 node. A node may house multiple pods.
+Each pod will have its own ip address.
+
+  +-----------------------------+
+  |+-------+ +-------+ +-------+|
+  || Pod 1 | | Pod 2 | | Pod 3 || 
+  ||       | |       | |       || 
+  ||+-----+| |+-----+| |+-----+||
+  |||con 1|| ||con 1|| ||con 1|||
+  ||+-----+| |+-----+| |+-----+||
+  ||       | |       | |       ||
+  ||       | |+-----+| |+-----+||
+  ||       | ||con 2|| ||con 2|||
+  ||       | |+-----+| |+-----+||
+  ||       | |+-----+| |       ||
+  ||       | ||con 3|| |       ||
+  ||       | |+-----+| |       ||
+  ||ip x   | | ip y  | | ip z  ||
+  |+-------+ +-------+ +-------+|
+  | Node 1                      |
+  +-----------------------------+
+
+
+
