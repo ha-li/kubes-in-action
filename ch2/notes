@@ -1,6 +1,5 @@
 minikube is a binary that allows you to run a single instance kubernetes cluster
--it is great for testing kubernetes and developing apps locally
-
+-it is great for testing kubernetes and developing apps locally 
 best documentation for installing minikube is here
 https://github.com/kubernetes/minikube
 
@@ -116,5 +115,106 @@ Each pod will have its own ip address.
   | Node 1                      |
   +-----------------------------+
 
+A pod is a group of 1 or more containers that will run together on the same
+worker node, and in the same linux namespace (ie they will look like
+they are in the same machine because they have the same ip address).
+
+Since they have the same ip address, the container (which typically
+only run 1 process per container) must bind to different ports.
+
+Each pod has it's own linux namespace, ip address, hostname, processes.
+Each pod functions as a separate logical machine even though they 
+are on the same physical machine.
+
+Each pod can run 1 or more containers, and each container will
+one house 1 process each, as is typical in a docker environment.
+
+Typical workflow when developing.
+1. you develop your app on your machine, create a docker image
+   on your local machine
+2. check your image into a docker registry
+3. kick of your kubectl which will create/spawn a replication 
+   controller to create a pod on the kubernetes cluster
+4. the replication controller will pull down the docker image
+   from the registry and create a pod on the cluster 
+   from the resulting container.
+
+You will also need to create a service object (this is typically
+associated with a load balancer) which you can connect
+to the pod from external to the cluster, by using that load
+balancers public ip address.
+
+  > kubectl expose rc kubia --type=LoadBalancer --name=kubia-http
+
+Newly created services can be listed by:
+  > kubectl get services
+ 
+minikube does not support loadbalancer services, so the service
+will never get an external ip address. but minikube will allow to 
+to get the ip and port which you can access the service:
+ 
+  > minikube service <service-name>
+    eg minikube service kubia-http
+
+
+The basic building block in kubernetes is the pod. You never
+work directly with the container. But even with pods, you 
+don't typically work with them directly, but rather through
+a replication controller, which is what is actually responsible
+for creating the pods.
+
+The ReplicaitonController is the equivalent of a autoscaling group in AWS.
+It is responsible for keeping the correct number of replicas running.
+When a pod dies because of a fatal exception, the replication controller
+is responsible for bringing it back up.
+
+Pods are ephemeral, they can die, disappear at anytime because the
+node they are running on disappears, someone deletes a pod, or
+a health pod gets evicted as part of the general maintainance 
+of the cluster. When this happens, a replication controller 
+will replace the pod with a new pod. This new pod will have its
+own ip addres that is differnet from the dying pod.
+The fact that the pods are ephemeral means we need to shield
+them from the clients, which is where a load balancer comes in play.
+
+When a new service is created, it gets a static ip which will 
+never change during the life time of the service. Instead of 
+connecting to the pods directly, clients should connect to 
+the services through its constant ip address. The load 
+balancer will ensure that one of the healthy pods gets the
+request regardless of which node the pods are running on.
+
+To scale up or down a kubernetes cluster, you run the command
+ > kubectl get replicationcontrollers
+to show you how many replicas are.
+
+To change the replica count you run:
+
+  > kubectl scale rc kubia --replicas=3
+
+In a kubernetes cluster, the pods can be expected to be moving 
+constantly as the cluster is a dynamic moving system. The service
+acts as a load balancer in front of the pods, regardless of whether
+it is a singel pod or multiple pods. 
+
+In the kubernetes world, what node your pods are running on is not important.
+As long as the node it ends up on can provide the cpu and memory the pod needs,
+the pod is happy.
+
+But the get pods command does allow you to see what node a pod is on
+just in case you are interested. this is the wide mode
+
+  > kubectl get pods -o wide
+
+You can see the pod info with a describe command:
+  
+  > kubectl describe pod <pod id>
+
+
+Kubernete Dashboard
+provides a dashboard view of the cluster.
+The minikube also provides the same view:
+
+   > minikube dashboard
 
 
