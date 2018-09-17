@@ -35,6 +35,7 @@ To install kubectl, run:
 
    to get all the pods
    > kubectl get pods
+     kubectl get pods -o wide (will have the pod ips and the node they are running on)
 
    to describe a pod
    > kubectl describe pod <pod-name>
@@ -49,8 +50,6 @@ To install kubectl, run:
    > kubectl scale rc <name> --replicas=3 
       eg: kubectl scale rc kubia --replicas=3   (creates 3 pods)
 
-   to describe a pod
-   > kubectl describe pod <pod id>
 
    to create a load balancer (rc = replicationcontroller) (minikube does not support LoadBalancer service)
    > kubectl expose rc kubia --type=LoadBalancer --name kubia-http

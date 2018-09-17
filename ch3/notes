@@ -1,0 +1,34 @@
+to get the full yaml description of a pod
+ > kubectl get pod -o yaml
+
+to outline the pod spec
+ > kubectl explain pods
+
+for specifics of the spec
+ > kubectl explain pod.spec
+
+to create a pod from a yaml spec
+ > kubectl create -f <file spec>
+ > kubectl create -f kubia-manual.yaml
+
+to get the full description after creation
+ > kubectl get pod <pod name> -o yaml/json
+
+to get the logs of kubernetes pod
+ > kubectl logs <pod-name>
+   kubectl logs kubia-manual
+
+  logs are rotated daily and when they reach 10 MB. kubectl logs only show current log file.
+if you pod container multiple containers, you have to specify the container name
+ > kubectl logs <pod-name> -c <container>
+   kubectl logs kubia-manual -c kubia
+
+port forwarding
+ > kubectl port-forward <pod-name> port1:port2
+   will forward port1 of your machine to port2 of your pod
+   to now in a new terminal, use curl localhost:port1 to hit the pods port2
+
+
+Labels
+
+
