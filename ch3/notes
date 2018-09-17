@@ -31,4 +31,29 @@ port forwarding
 
 Labels
 
+-a key value pair attachable to resources that can then be used to select resources
+ using label selectors; kinda like tags in aws
+-a resource can have more than one label as long as the keys of the labels are unique 
+ within that resource
+-usually attach a label to a resource when you create them, but labels can be
+ added/modified even after the resource has been created, without the need to 
+ recreate the resource.
 
+ aside - a canary release is when you deploy a new version of an application next to the
+ stable version, and only let a small fraction of users hit the canary version to see
+ how it behaves before rolling it out to all users, preventing a large exposure if
+ the release is unstable
+
+-labels will be visible to all person with access to that cluster
+ > kubectl get pods --show-labels
+
+-can also specify the labels you are interested in, and all pods will be returned with
+ labels in speciial columns
+ > kubectl get pods -L creation_method,env
+
+-you can also modify the labels of existing pods
+ > kubectl label pod kubia-manual creation_method=manual
+   this will modify the creation_method label of kubia-manual to be manual
+
+-if the pod already has that label, then you have to specify to overwrite it
+ > kubectl label pod kubia-manual-v2 env=debug --overwrite
