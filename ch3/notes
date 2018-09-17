@@ -93,4 +93,115 @@ like wise you can select nodes and have them display the labels
 to specify a pod get deployed to a certain node you need to specify in your yaml manifest
 a node selector criteria
 
-  
+ 
+Each node has a unique label with the key kubernetes.io/hostname which is the actual hostname of the node.
+You could potentially use this as a label selector to control your deployment, but in general doing so
+would be bad practice because if such a node label does not exist, then the pod will become
+unscheduled. 
+
+Don't think in terms of individual nodes, but rather, node features you want to target
+
+
+Pod Annotations
+--------------
+Pods and other objects can contain annotations. 
+Annotations are key value pairs, similar to labels, but they are not meant to hold identifying information.
+They cannot be used to group objects as there are no such thing as annotation selectors.
+
+Annotations hold much more information then labels, and are mainly used by tools.
+Some tools will add annotations, and some annotations get added by users.
+
+Annotations are common used when a new feature gets added to kubernetes, before the API is clear
+about the feature, as a way to document a feature, and then once the feature is agreed upon by
+the community, new fields are added, and the annotation gets deprecated.
+
+A good use of annotation is to add description to each pod or api object so that everyone using the
+cluster can quickely get information about each object.
+
+It is a good idea to use namespacing when annotation so that collisions doen't happen
+   gecko.com/annotationkey=annoationvalue
+
+An objects annotation will be in the resources metadata section.
+To view the objects annotation, you need to objects yaml/json manifest
+ > kubectl get pod <pod> -o yaml 
+
+
+to add an annotation to an existing pod
+ > kubectl annotate pod <pod-name> company.com/someannotaion="somevalue"
+
+
+
+Kubernetes Namespaces
+
+There will be times when you want to be able to split your objects into separate non-overlapping groups
+so that you only perform operations inside one group at a time. This is where namespacing comes into play.
+Namespacing provides a scope for object names.
+
+So within different namespaces, objects can have the same name -- this may be useful.
+For example in complex systems, you want to split your components into smaller distinct groups.
+For example prod/pre-prod environments. So if you have a qal namespace and a prod namespace, the
+objects name have the same name in each of those namespaces.
+
+Nodes do not reside in a namespace, they are global and not tied to a namespace.
+
+-to get the name space
+ > kubectl get ns
+
+you will see that there is a default namespace, a kube-public and kube-system namespace.
+
+-to get objects within a certain namepace
+> kubectl get pod --namespace kube-system
+
+  will return all pods within the kube-system namepsace. It would make sense that objects used to 
+run kubernetes will reside in their own namepsace, and don't get returned when you are running
+your standard commands (which work for the default namespace), otherwise your the kube-system 
+objects would clutter all your return values
+
+Namespaces are just another kubernetes resource, so they get created just like any other object, via
+a manifest file:
+
+
+You can also create namesapces with a command:
+ > kubectl create namespace my-namespace
+
+There are rules for object names (RFC 1035 - domain names) but namespaces may not conatin dots.
+
+When creatign objects, if you want to target a namespace, you can either declare the
+namespace in the object manifest, or in the create command
+> kubectl create -f my-manifest.yaml --namespace custom-namespace
+
+When working objects in a namespace, if you don't specify the namespace, it will be the default
+namespace, otherwise you need to specify it as part of your command.
+
+You can switch between namespaces with the command
+ > kubectl config set-context $(kubectl config current-context) --namespace <namespace to switch to>
+ > kubectl config set-context $(kubectl config current-context) --namespace ass-kick-ns
+    which switch to the namespace 'ass-kick-ns' and all kubectl commands will execute in that
+    context, until you swtich back to default
+
+
+Namespaces do not provide isolation of the running objects. Namespace only provides logical group distinction,
+but objects can still communicate across namespaces if there is not ioslation.
+
+
+Deleting Pods
+To delete pods
+> kubectl delete pod <pod name>, <pod name2>, ...
+
+Kubernetes will send a SIGTERM signal to the process and wait for (30 secs) default time to allow the process
+to gracefully shut down. If not, then it will send a SIGTERM signal
+
+You can use the label selector to delete pods with that label
+> kubectl delete pod -l creation_method=manual
+ will delete all pods created manually
+
+You can delete an entire namespace
+> kubectl delete ns <namespace>
+
+You delete all pods in a namespace
+> kubectl delete pod --all
+
+anything that was created by a replication controller will attempt to scale up to its desired size
+after a delete all command, so you have to delelete the replication controller as well
+> kubectl delete all --all
+ (this will delete services, rc, pods but will not delete secrets)
