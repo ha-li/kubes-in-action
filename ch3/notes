@@ -57,3 +57,40 @@ Labels
 
 -if the pod already has that label, then you have to specify to overwrite it
  > kubectl label pod kubia-manual-v2 env=debug --overwrite
+
+-to select pods based on labels
+ > kubectl get pod -l creation_method=manual
+
+-to select pods with a certain label specified, eg if the env label is set
+ > kubectl get pod -l env 
+
+-to select pods on a label and also display the labels, you combine both -l and -L
+ > kubectl get pod -l env -L creation_method,env
+
+-to select pods that don't have a certain label
+ > kubectl get pod -l '!env'
+
+-to select pods based on multiple values
+ > kubectl get pod -l creation_method in (prod,dev)
+ > kubectl get pod -l creation_method notin (prod,dev)
+
+
+Using Labels to control pod scheduling
+In general you don't want to specify which nodes a pod should be created on, and just allow the kubernetes
+cluster to allocate pods based on their resource requirements (eg, x memory, y cpu, z ssd/hdd)
+but once in a while you will want to control which node a pod will be scheduled on based on certain 
+characteristics of the node and the application requirement, eg deploy to nodes using ssd, 
+or deploy on nodes using GPU, etc
+
+to do so, you will need to label your nodes as they get set up
+> kubectl label node gke2-aruc-548fea gpu=true
+
+like wise you can select nodes and have them display the labels 
+> kubectl get node -l gpu=true -L gpu
+  will retrieve nodes where gpu is true, as well as display the gpu label
+
+
+to specify a pod get deployed to a certain node you need to specify in your yaml manifest
+a node selector criteria
+
+  
