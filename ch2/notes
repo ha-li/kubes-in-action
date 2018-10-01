@@ -3,6 +3,21 @@ minikube is a binary that allows you to run a single instance kubernetes cluster
 best documentation for installing minikube is here
 https://github.com/kubernetes/minikube
 
+-on macOs install using brew
+     (you need oracle vm virtualbox manager installed before installing minikube)
+   > brew cask install minikube
+
+-if you've already installed minikube, and then deleted the image, reinstall 
+ requires you to delete minikube then reinstall 
+   > minikube stop; minikube delete
+   > rm -fr ~/.kube ~/.minikube
+   > sudo rm /usr/local/bin/localkube /usr/local/bin/minikube
+   > systemctl stop ;*kubelet*.mount'
+   > sudo rm -fr /etc/kubernetes
+   > brew cask reinstall minikube
+   (you'll need to start minikube before the image shows up in the virtualbox manager)
+
+
 to start minikube:
    > minikube start
 
@@ -103,8 +118,7 @@ Each pod will have its own ip address.
   |||con 1|| ||con 1|| ||con 1|||
   ||+-----+| |+-----+| |+-----+||
   ||       | |       | |       ||
-  ||       | |+-----+| |+-----+||
-  ||       | ||con 2|| ||con 2|||
+  ||       | |+-----+| |+-----+|| ||       | ||con 2|| ||con 2|||
   ||       | |+-----+| |+-----+||
   ||       | |+-----+| |       ||
   ||       | ||con 3|| |       ||
