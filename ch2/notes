@@ -17,6 +17,8 @@ https://github.com/kubernetes/minikube
    > brew cask reinstall minikube
    (you'll need to start minikube before the image shows up in the virtualbox manager)
 
+-you also need to install kubectl
+   brew install kubectl
 
 to start minikube:
    > minikube start
@@ -35,42 +37,127 @@ to get the dashboard for minikube
 To interact with Kubernetes, you will need kubectl cli client.
 To install kubectl, run:
    > curl -LO https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/darwin/amd64/kubectl && chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+Or you can install it with brew
+   > brew install kubectl
 
+Cluster Components
+==================
    to see the components of your cluster:
    > kubectl cluster-info
+     This will return the cluster components (Kubernetes master, KubeDNS/CoreDNS, kubernetes-dashboard)
+     and their ip address/port info
+
+Nodes
+=====
 
    to see all the nodes in your cluster:
    > kubectl get nodes
+     This will return the nodes in your cluster. In your local-run single node minikube cluster, you will
+     only see minikube
+
+     NAME        STATUS    ROLE      AGE   VERSION
+     minikube    Ready     master    1m    v1.5.10
+
 
    to describe a node
    > kubectl describe node <node-name>
+     eg kubectl describe node minikube 
+     
+     This will return a detailed output describing the node such as the role, name, events, etc
+    
+   to describe all nodes 
+   > kubectl describe node
+
+Pods
+====
+   The most basic unit in kubernetes is a pod. 
+   A pod is a separate logical machine. It has its own ip address, hostname, process linux namespace etc
+   A pod will have 1 or more containers. Containers in the pod have their own linux namespace.
+   Containers on the same pod will appear as though they are running on the same machine (since they
+   have the same ip address).
+
+
+   Usually to create a pod/run an image, you would create a manifest file (yaml/json format) and
+   run kubectl create -f <file-name>
+
+   but to create a pod from a image in its simpliest form:
 
    to run an docker image on kubernetes cluster (for a replication controller)
    > kubectl run kubia --image=haja/kubia --port=8080 --generator=run/v1
+        kubia is the pod name
+        --image is the docker image name
+        --port is the port kubernets opens
+        --generator - usually you wouldn't use it because you would use a deployment, but
+                      here you're using it so that kubernetes will create a replicationcontroller
+                      instead of a deployment
 
    to get all the pods
    > kubectl get pods
      kubectl get pods -o wide (will have the pod ips and the node they are running on)
 
+     NAME        READY      STATUS     RESTARTS     AGE
+     kubia-ksyt  1/1        Running    0            10m
+
+     the ready column gives you the number of pods running in ready out of all
+     the status gives the pending/running/created status
+     restarts - gives the number of times the pod has been restarted
+     age - the age of the pod
+
    to describe a pod
    > kubectl describe pod <pod-name>
+     will return a detailed description of the pod including its namespace, name, labels, start time, etc
+
+
+When you run kubectl on your local machine with a set of instructions, this instruction set will be
+sent to the REST API Server on the master node (master). 
+
+The master node will then schedule one of the worker nodes (node) to pull the docker image from the
+docker registry. The worker node will spawn a pod, download the image. After the node is downloaded, 
+docker will create a container and run it inside the pod.
+
+The term scheduling means assigning a pod to a node. The pod will get run right away, not some time in
+the future as the name schedule would suggest.
+
+
+Services
+========
+Services represent things like load balancers
 
    to get the service objects
    > kubectl get services
+    
+     NAME          CLUSTER-IP     EXTERNAL-IP     PORT(S)          AGE
+     kubernetes    10.34.22.1     <none>          443/TCP          12m
+     kubia-http    10.3.234.184   104.230.75.1    8080:31348/TCP   1m
 
-   to get the number of replication controllers
-   > kubectl get rc
- 
-   to scale the replica pods
-   > kubectl scale rc <name> --replicas=3 
-      eg: kubectl scale rc kubia --replicas=3   (creates 3 pods)
-
-
-   to create a load balancer (rc = replicationcontroller) (minikube does not support LoadBalancer service)
+   to create a load balancer 
+      (rc = replicationcontroller) (minikube does not support LoadBalancer service)
    > kubectl expose rc kubia --type=LoadBalancer --name kubia-http
+     this telss kubectl to expose replicas named kubia through a load balancer service with
+     the name kubia-http
 
    minikube does not support the LoadBalancer type service, so to get the ip address of the service
    > minikube service kubia-http (kubia-http is the name returned by kubectl get services)
+
+ReplicationControllers
+======================
+ReplicationControlers are the equivaent of ASG in AWS. 
+They are responsible for scaling up and down the pods.
+
+
+   to get the number of replication controllers
+   > kubectl get rc
+     kubectl get replicationcontroller
+     
+     NAME         DESIRED       CURRENT       READY        AGE
+     kubia        1             1             1            10m
+
+ 
+   to scale the replica pods, you tell kubectl the desired state, kubectl
+   will do the necessary to get to the desired state.
+   > kubectl scale rc <name> --replicas=3 
+      eg: kubectl scale rc kubia --replicas=3   (creates 3 pods)
+
 
 kubernetes does not run individual containers, rather, it runs them inside pods. so containers can
 be co-located in pods. 
