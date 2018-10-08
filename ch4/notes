@@ -1,0 +1,67 @@
+Replication & Controllers: Managed Pods
+=======================================
+
+in the real world, you would never create pods directly
+-you would use either ReplicationControllers or Deployments, which then create the pod, plus manage the pod 
+ directly for you
+
+-when you create the pod directly, a cluster node is selected to run the pod
+ then its containers are run in that pod, in that node
+-kubernetes will then monitor the container, and restart them if they fail
+-but if the whole node is lost, the pods on those nodes are lost and will not be replaced
+ with new ones
+-if you use replication controllers or similar, they will manage the pod for you
+-understanding how kubernetes uses these to monitor the containers to see if the container
+ is still alive, and how kubernetes restarts them if they are not
+
+Keeping Pods Alive
+==================
+kubernetes uses a declarative model where you state the desired state, and then
+let kubernetes do the necessary work to bring it to the desired state
+-if you want a pod to run, you declare so, and then let kubernetes pick the
+ worker node, and run the pods containers on that node
+
+-if the container dies, kubelete on that node will run its containers and then from then
+ on, keep them running as long as the pod exist
+-if the processes main process crashes, the kubelet will restart the container
+-if the application has a bug that crashes every once in a while, the kubelete will restart it
+-simply running a app in kubernetes will give it the ability to heal itself
+
+Liveness probes
+===============
+kubernetes checks if a container is alive through a liveness probe
+-you can specify a liveness probe for each container in the pods spec
+-kubernetes will periodically execute the probe an d restart the container if the probe fails
+
+-there are 3 mechanisms kubernetes does liveness probes
+   1. - http get on the containers ip address, port and path you specify in the manifest 
+        as long as the GET returns a 2xx or 3xx response, the probe is considered successful
+      - if the probe doesn't respond, or it returns some other response, it is considered a 
+        failure, and the container will restart
+  
+   2. - TCP socket probe will try to open a TCP connection to the specified port of the 
+        container. 
+      - if the connection is established successfully, the probe is successful, otherwise
+        the container fails
+  
+   3. - exec probe will execute an arbitrary command inside the container, checking the exit
+        status
+      - if the status code is 0, the probe is successful, otherwise all other codes are consider failures
+
+HTTP Get liveness probe
+=======================
+  An example of a yaml manifest that specifies the liveness probe:
+
+  apiVersion: 1
+  kind: Pod
+  metadata:
+    name: kubia-livess
+  spec:
+    containers:
+    - image: haja/kubia-unhealthy
+      name: kubia
+      livenessProbe:
+        httpGet:
+          path: /
+          port: 8080 
+
