@@ -218,5 +218,17 @@ Template for a Replication Controller
           ports:
             - containerPort: 8080
 
+When such a manifest is submitted to the API Server, a replication controller
+resource gets created with the name kubia
+-the replica count is set to 3, 
+-the 3 pods created will use the pod template provided with the label selector
+ as specified "app=kubia"
+-the pod labels will match the label selector of the replication controller
+ otherwise the replciation controller will keep spinning up new pods
+ until the replica matches the count and the label selector matches
+-not specifying a label selector is also an option, in which case, it will be
+ configured automatically from the labels in the pod template
+-it is actually recommended that you not specify a label selector for the replicat
+ controller, and instead let the labels be extracted from the pod template
 
 
