@@ -65,3 +65,158 @@ HTTP Get liveness probe
           path: /
           port: 8080 
 
+Exit codes
+==========
+You can see why a container had to be restarted by looking at the content of the pods describe:
+  > kubectl describe pod <pod name>
+
+  In the section Last State: you will see that it was terminated, and the reason, and the error code.
+
+  the error code is alway the sume of the signal number sent to the process and 128. 
+  so if the error code is 137, the exit status is 137-128 = 9, which is SIGKILL, meaning the process was
+  killed forcibly
+
+  at the bottom of the descibe will be a listing of the events, 
+  it should show that kubernetes detected that the container was unhealthy, so it was killed and re-created.
+  when a container is killed, a new container is created, it is not the same container being restarted
+
+Health check parameters
+=======================
+  the describe output will display information about the liveness probe such as:
+   - the url/endpoint used
+   - the delay
+   - the timeout
+   - the period, etc
+   - failure count
+
+   the delay = 0 shows that the probe begins immediately after the container started
+   
+   the timeout shows how long the probe will wait for a response before it timeouts and
+   considers the probe failed
+  
+   the period shows how often the probe is run, evey x seconds
+
+   the failure count is how many consecutive fails before the container gets restarted
+
+ -all these parameters can be specified in the manifest
+
+InitialDelay
+============
+    livenessProbe: 
+      httpGet:
+        path: /
+        port: 8080
+      initialDelaySeconds: 15
+
+    this specifies a delay of 15 seconds before the liveness probe starts
+    you always want to specify a delay to account for your applications start up time, otherwise you
+    will see that the probe kicks in right away, and it will fail, causing the process to be killed
+    externally. This will be reflected in the exit code of 137 (SIGKILL) or 143 (SIGTERM).
+
+    Rules for Effective Health checks
+    =================================
+    for production pods, you should always define a liveness probe 
+      - a very simple probe will simply check if the server is responding
+      - for more complex liveness probes, you can configure specific path (eg /health) and
+        have the app perform internal status checks of vital components to ensure
+        none of them has died or is unresponsive (eg database, jms, other services)
+      - however, the health check should only check the internals of the app, and nothing influenced by
+        external app. for example if app fails to connect to the database, the liveness probe should
+        not fail. if the underlying database is the issue, restarting the app server/container will
+        not fix the problem, so your app will just restart repeatedly
+      - health checks should be fast (so that the timeout is small)
+      - health checks should not use a lot of computational resources
+        doing a health check should not slow down your container considerably 
+      - you want your health check to not require authentication 
+      - for java apps, you should make use of the http-get health check instead of
+        an exec probe. the exec probe would spin up a whole new jvm which is heavy weight and 
+        takes considerable computational resources
+
+      - do not bother implementing retry loops in your probe, this is what the retry count is for
+      - even when you set the threshold to 1, kubernetes will retry multiple times before considering
+        it a failed attempt, so having your own retry loop is a wasted effort
+
+     Node failure
+     ============
+      - the restart of a pod/container is done by the kubelete on the node hosting the pod, this is not
+        done by the kubernetes control plane component
+      - when the entire node fails, the kubernetes control plane must create replacements for
+        all the pods in the node, however if you created the pod directly, these pods are not
+        controlled by anything except the kubelete, and since the kubelete runs on the node directly,
+        it will not be able to do anything if the node fails
+      - to make sure your app is restarted on another node, they pod needs to be managed by a 
+        replication controller or similar method
+ 
+
+Replication Controller
+======================
+In order to have your app restart on another node in the event of a node failure, you need
+to have your pod managed by a replication controller or other similar mechanism
+
+replication controllers are kubernetes resource that ensures pods are always kept running
+-if the pod disappears for any reason, ex if the node disappears from a cluster or if the
+ node is evicted from a cluster, the replication controller will notice the nissing pod, and 
+ create a replacement pod
+
+
+Replication Controllers will constantly monitor the list of running pods and make sure the actual
+number of pods of a "type" always match the desired number
+ - if there are too few pods running, the rc will scale up to the desired number
+ - if there are too many pods running, the rc will scale down 
+
+Reasons why there may be more than the desired number of replicas
+ - someone creates a pod of the same type
+ - someone changes the type of an existing pod
+ - someone descreases the desired number of pods
+
+How Replication Controllers work
+================================
+
+Replication Controllers work based on the label selectors
+
+a replication controller has 3 parts
+-a label selector
+-a replica count
+-a pod template
+
+-when you change the replica count, it will affect the existing pods
+-when you change the label selector or the pod template, it will not affect the existing pod, 
+ instead it will affect new pods
+
+-changing the label selector will cause the existing pods to drop out of scope with the
+ replication controller, so the rc will stop caring about them, and instead create a new set
+
+-changing the pod template likewise will have no affect on the current pods, it will instead
+ create new pods based on the new template when the need arises. the rc does not actually
+ care about or monitor the pod contents after the pod has been created
+
+Replication Controllers provide very powerful features like
+-being able to create new pods when an existing one disappears
+-when a node fails, any pods under control by rc will be replaced
+-allows horizontal scaling both manual and automatic
+
+Pods are never moved, but rather a new one is created.
+
+Template for a Replication Controller
+=====================================
+  apiVersion: 1
+  kind: ReplicationController
+  metadata:
+    name: kubia
+  spec:
+    replicas: 3
+    selector:
+      app: kubia
+    template:
+      metadata: 
+        labels: 
+          app: kubia
+      spec:
+        containers:
+        - name: kubia
+          image: haja/kubia
+          ports:
+            - containerPort: 8080
+
+
+
