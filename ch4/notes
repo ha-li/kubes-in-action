@@ -231,4 +231,215 @@ resource gets created with the name kubia
 -it is actually recommended that you not specify a label selector for the replicat
  controller, and instead let the labels be extracted from the pod template
 
+Replication Controller commands
+===============================
+
+You can get the replication controller resources as
+ > kubectl get rc
+
+ this is analogous to get pod
+
+Replication Controller in Action
+=================================
+once the replication controller has been created,
+you should be able to see all the replica pods it has created
+ 
+ > kubectl get pods
+   
+ will return all the pods associated with the rc
+
+you can delete one of the pods and see that the rc will immediately
+create a new pod
+ > kubectl delete pod <pod name>
+ 
+ the newly created pod will have a different status, and the terminating 
+ pod will have a "Terminating" status
+
+Replication Controller Information
+==================================
+You can see the rc information using
+ > kubectl get rc
+
+   NAME      DESIRED   CURRENT   READY     AGE
+   kubia     3         3         3         39m
+
+ which will display the rc, its desired, current count, the ready count and the age of teh rc
+
+If you have multiple rc, and you just want one
+ > kubectl get rc <rc name>
+
+
+you can also describe the rc to get additional information about the rc
+ > kubectl describe rc kubia
+
+ this will give the details of the replication controller
+ such as its:
+  - name
+  - namespace
+  - selector
+  - labels
+  - annotations
+  - replicas
+  - the pod template (includes the container)
+  - the events for that rc
+
+How the Replication Controller works
+====================================
+
+When a pod managed by the rc is deleted, the rc will be notified.
+When the rc is notified of a deletion, the rc will check the actual number
+of pods against the desired count, and take appropriate action
+
+Likewise when you lose an entire node, if the pods on the node are 
+managed by replication controllers, then kubernetes will
+automatically spawn new pods for you in different nodes
+ - you can do this on a platform like google cloud
+   where you can find the name of the node that a pod runs on 
+   (kubectl get pods -o wide) will return the node
+ - then disconnect that nodes network interface (sudo ifconfig eth0 down)
+
+ - you can then list the nodes 
+    > kubectl get node
+      
+    you will find one of the nodes status is NotReady.
+
+ - once the node has been unreachable for several minutes, then the rc
+   will immediately spin up new pods
+
+
+Moving Pods in/out of scope of ReplicationController
+====================================================
+pods that are created by a rc are not bound to the rc in anyway,
+rc manage the pods that match its label selector
+ - if you change the labels of the pod, the pod no longer matches the
+   rc, and the rc will stop seeing that pod. the pod has fallen out
+   of scope. when a pod falls out of scope of the rc, the rc 
+   will try to bring itself back to compliance with its replica count
+ - in the same way, you can change an existing pods label so that it
+   now matches the rc label selector
+  
+   assume you have a rc with pods labeled app=kubia
+   > kubectl get pods --show-labels
+
+  NAME          READY     STATUS    RESTARTS   AGE       LABELS
+  kubia-kl997   1/1       Running   0          35m       app=kubia
+  kubia-v6qjb   1/1       Running   0          51m       app=kubia
+  kubia-xxtd5   1/1       Running   0          1h        app=kubia
+
+  then you launch another pod:
+   > kubectl create -f kubia.yaml
+
+   > kubectl get pods --show-labels
+     NAME          READY     STATUS    RESTARTS   AGE       LABELS
+     kubia         1/1       Running   0          9s        <none>
+     kubia-kl997   1/1       Running   0          37m       app=kubia
+     kubia-v6qjb   1/1       Running   0          53m       app=kubia
+     kubia-xxtd5   1/1       Running   0          1h        app=kubia 
+
+  you see that the manually launched kubia has no label
+ 
+  you can manually label that pod
+   > kubectl label pod kubia app=kubia
+     pod/kubia labeled
+
+   > kubectl get pods --show-labels
+   NAME           READY     STATUS        RESTARTS   AGE       LABELS
+   kubia-kl997    1/1       Running       0          34m       app=kubia
+   kubia-manual   1/1       Terminating   0          4m        app=kubia
+   kubia-v6qjb    1/1       Running       0          50m       app=kubia
+   kubia-xxtd5    1/1       Running       0          1h        app=kubia
+
+   You should see that the pod is now labeled, but since the replica count is
+   exceeded, one of the pods will terminate, which is what we see above
+
+Changing the labels of managed pods
+===================================
+If you add a new label to existing pods managed by rc, it will not affect the
+replica count or the pods, since the pods still are in scope of the rc label
+selector
+ 
+ > kubectl label pod kubia-kl997 type=special
+ 
+ > kubectl get pods --show-labels
+
+   NAME          READY     STATUS    RESTARTS   AGE       LABELS
+   kubia-kl997   1/1       Running   0          44m       app=kubia,type=special
+   kubia-v6qjb   1/1       Running   0          1h        app=kubia
+   kubia-xxtd5   1/1       Running   0          1h        app=kubia
+
+
+ you can change the label of a pod causing the pod to fall out of scope of the
+ rc, in which cause, the pod will detach and no longer be managed by the
+ rc, and then the rc will bring it back to its correct replica count
+ 
+ > kubectl label pod kubia-kl997 app=fool --overwrite
+   pod kubia-kl997 labeled
+
+ > kubectl get pods --show-labels
+
+   NAME          READY     STATUS    RESTARTS   AGE       LABELS
+   kubia-7jtmh   1/1       Running   0          5s        app=kubia
+   kubia-kl997   1/1       Running   0          55m       app=foo,type=special
+   kubia-v6qjb   1/1       Running   0          1h        app=kubia
+   kubia-xxtd5   1/1       Running   0          1h        app=kubia
+
+   you see that the one pod label has changed, and a new pod with the rc scope
+   has been created
+
+Removing pods from the scope of a rc is handy when you want to debug/troubleshoot
+a particular pod, for example a bug has been identified in that pod, or if the
+pod started to behave eradictly. once down, you can delete the pod
+
+Changing a Controllers pod template
+===================================
+A rc pod template can be modified at any time.
+changing the pod template is like changing the mold of the rc,
+it will only affect newly created pods, not the existing pods.
+the existing pods will also continue to be in scope of the
+rc since scope is determined by the label selectors
+
+ to change the rc pod template:
+ > kubectl edit rc kubia
+
+ this will open the rc yaml definition in the default editor, allowing 
+ you to change the pod template on the fly. once you save and exit, 
+ the changes are persisted to the rc pod template and new pods
+ will be as the pod template says
+
+ you can add metadata (such as new label), change the container image,etc
+
+Horizontally scaling a rc
+=========================
+you can scale up or down a rc by stating the new replica size
+ 
+ > kubectl scale rc kubia --replicas=10
+
+or you can edit the rc template
+
+ > kubectl edit rc kubia
+
+   then change the replica section
+   saving and exiting the editor will save the rc info, and it will adjust accordingly.
+
+
+Deleting a Replication Controller
+=================================
+there are two ways to delete a rc
+ 1. deleting the rc and also deleting the pods associated to it
+ 2. deleting just the rc and leaving the pods
+
+when you delete the rc using 
+ > kubectl delete rc kubia
+
+   you will delete all pods and the rc associated
+
+ 
+If you add a parameter --cascade=false, then only the rc will be deleted
+ > kubectl delete rc kubia --cascade=false
+
+   
+Now if you want, you can create another rc with the same label selector and
+the pods will fall right back into scope
+ > kubectl create -f kubia-rc.yaml
+
 
