@@ -442,4 +442,138 @@ Now if you want, you can create another rc with the same label selector and
 the pods will fall right back into scope
  > kubectl create -f kubia-rc.yaml
 
+ReplicaSet
+==========
+are the next generation of replication controllers
+-behave almost exactly like a replication controller but has more expressive pod selector
+-still common to see replication controllers in production
+-replication controllers match pods according to certain label
+-replication sets allow matching of pods that lack certain labels or pods that include certain label regardless of value
+-replication sets can also match pods where label env=prduction and env=development at the same time, rc cannot do this
+-replication sets can also match pods based on the presence of a label, regardless of its value ie env=*
+
+Always use replica sets over replicationcontrollers, but you will find other people still using replciation controllers.
+
+Defining a ReplicationSet
+=========================
+apiVersion: apps/v1beta2
+kind: ReplicaSet
+metadata:
+  name: kubia
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kubia
+  template:
+    metadata:
+      labels:
+        app: kubia
+    spec:
+      containers:
+      - name: kubia
+        image: haja/kubia
+
+
+Expressive label selectors
+==========================
+-replicasets (rs) have a more expressive label selector than rc
+-for example you can use "matchExpressions" for better expressions:
+
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values: 
+          - kubia
+
+ this selects pods containing a label with key "app" and hte value must be "kubia"
+
+Operators that can be used in replication sets:
+ - In - labels value must match one of the specified
+ - NotIn - labels value must not match any of the specified values
+ - Exists - Pod must include a label with the specified key (the value is not important).
+            When using Exists, you should not specify the values field
+ - DoesNotExist - Pod must not include a label with the specified key. The values property must
+          not be specified
+
+Deleting ReplicaSets
+====================
+Delete a ReplicaSet like you would a replication controller
+
+ > kubectl delete rs kubia
+ 
+DaemonSet
+=========
+A daemon set is used to run 1 pod on each of the nodes
+-typical use case is for deploying infrastructure-related pods that need to run on each node,
+ for example a log collector, resource monitort, kube-proxy process
+-in a non-kubernetes cluster, these kinds of infrastructure would be run as part of the 
+ node boot up process, but on kubernetes, you can take advantage of restarts, auto deployment etc
+
+-a daemon set will create as many pods as there are nodes. So if a node is destroyed, 
+ the daemon set will not restart the pod on another pod, but as soon as a new node is added,
+ that pod will launch on the new node
+-the daemon set has no concept of a replica count. it will only ensure that each node
+ will have a such pod by making sure that the a pod running its pod selector is running
+ on each node
+
+
+Using DaemonSets to run pods on a subset of nodes
+=================================================
+-you can use a daemon set to run the pod on a certain subset of the nodes by specifying
+ a node-selector property in the pod template, which is also part of the
+ daemonset definition
+
+-node-selectors are also used in pod selection
+
+Labeling Nodes
+---------------
+ to retrieve the list of nodes
+ > kubectl get node
+
+ to add a label to a node
+ > kubectl label node <node name> key=value
+   
+  eg  kubectl label node minikube disk=ssd
+
+ > to change an existing label on a node, specify the --overwrite parameter
+   > kubectl label node minikube disk=hdd --overwrite
+
+ 
+Defining a DaemonSet
+===================
+apiVersion: apps/v1beta2
+kind: DaemonSet
+metadata:
+  name: ssd-monitor
+spec:
+  selector:
+    matchLabels:
+      app: ssd-monitor
+  template:
+    metadata:
+      labels:
+        app: ssd-monitor
+    spec:
+      nodeSelector:
+        disk: ssd
+      containers:
+      - name: main
+        image: luksa/ssd-monitor
+ 
+
+DaemonSet operators
+===================
+To create a daemon set, create the yaml file and then create a resource like all other resource
+> kubectl create -f ds.yaml
+
+To get the list of daemonsets
+> kubectl get ds
+
+  NAME          DESIRED   CURRENT   READY     UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+  ssd-monitor   0         0         0         0            0           disk=ssd        17s
+
+to delete a daemonset
+> kubectl delete ds ssd-monitor
 
