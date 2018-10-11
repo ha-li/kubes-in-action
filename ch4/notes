@@ -947,4 +947,10 @@ spec:
           - name: main
             image: luksa/batch-job
 
+Cron is not perfect
+-at times it will create 2 jobs instead of 1 or miss creating a job
+-you need to solve this by making your tasks idempotent so that if 2 jobs
+ are created, rerunning it will not be harmful
+-and you should have redundancy built in so that if a scheduled job is missed,
+ the next start up will run the missed ones as well
  
