@@ -577,3 +577,374 @@ To get the list of daemonsets
 to delete a daemonset
 > kubectl delete ds ssd-monitor
 
+
+Jobs
+====
+Jobs are special resources that run once, and once completed, does not get restarted again.
+-jobs are similar to other resources, except that the pod it runs in, once completed, does not
+ get restarted again
+-when the node fails before the job completes, then the job will be rescheduled to another node
+ just like a replica set
+-if the process fails during its run, it can be configured to either restart the container, or not
+
+-jobs are juseful for adhoc tasks where the task needs to be completed, you could run this in an 
+ unmanaged pod, and then wait for it to finish, but then you have to:
+   - wait for it to complete
+   - if a node fails, you have to manually recreate it
+   - if the process fails, you have to re-create it
+ these are all manual steps that don't make sense, especially if the job takes hours to complete
+
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+Creating a Job
+--------------
+In the yaml definitition, the kind is Job
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+
+
+In a batch job definition, you have to specify what kubernetes should do when the
+process running in the container finishes
+ - this is set in the restartPolicy pod spec
+ - in a normal pod, this is set to Always, but Jobs cannot have Always
+ - Job restartPolicy should either be OnFailure, or Never, this is what prevents
+   the job pod from restarting on failure
+
+To see the job
+ > kubectl get job
+   NAME        DESIRED   SUCCESSFUL   AGE
+   batch-job   1         1            19m
+
+To see the Job running
+ > kubectl get pods 
+   NAME              READY     STATUS      RESTARTS   AGE
+   batch-job-bjk94   0/1       Running     0          6m
+   kubia-gw2sr       1/1       Running     0          1d
+
+On the job completes, you should see the status in Completed
+ > kubectl get pods 
+   NAME              READY     STATUS      RESTARTS   AGE
+   batch-job-bjk94   0/1       Completed   0          6m
+   kubia-gw2sr       1/1       Running     0          1d
+
+Completed jobs do not disappear, allowing you to view the logs
+> kubectl logs batch-job-bjk94
+
+To get rid of the job, you have to delete it
+> kubectl delete job batch-job
+
+
+Running multiple pod instances in a Job
+=======================================
+
+Jobs can be configured to run more than once. Set the completions to how many
+times you want to the job pod to run
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: multi-completion-batch-job
+spec:
+  completions: 5
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+
+This manifest will trigger 5 pods, created one after another.
+Once the first pod is created, and completes, it's status goes to Completed.
+A new pod will be created, and it will run until completed, repeat for 5
+
+After all are done, you will get a listing as so:
+
+  NAME                               READY     STATUS      RESTARTS   AGE
+  multi-completion-batch-job-bztpx   0/1       Completed   0          11m
+  multi-completion-batch-job-ct9cb   0/1       Completed   0          9m
+  multi-completion-batch-job-ftddv   0/1       Completed   0          7m
+  multi-completion-batch-job-g5vff   0/1       Completed   0          15m
+  multi-completion-batch-job-n8vdt   0/1       Completed   0          13m
+  batch-job-tgfqc                    0/1       Completed   0          20m
+  kubia-twtqh                        1/1       Running     0          1d
+  kubia-whsmc                        1/1       Running     0          1d
+
+showing clearly the 5 pods that were created and completed.
+Note that the age of the pods show that they clearly were created sequentially.
+
+And if one of the pods fail, then a new one will be created to complete what it started.
+
+Running Pods in Parallel
+========================
+
+Pods can also be run in parallel.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: parallel-batch-job
+spec:
+  completions: 5
+  parallelism: 2
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: main
+        image: luksa/batch-job
+
+Once created:
+ > kubectl create -f parallel.yaml
+
+You can see the 2 pods running at the same time:
+> kubectl get pods
+   NAME                               READY     STATUS      RESTARTS   AGE
+   parallel-batch-job-6fwl5           1/1       Running     0          9s
+   parallel-batch-job-bjs65           1/1       Running     0          9s
+
+Since the manifest sets 5 completions, kubernetes will run 2 pods
+in parallel until completion, then create another 2, until 5 pods get created.
+So there will be 2 sets of 2, and 1 set of 1
+
+> kubectl get pods
+
+You can scale the parallel jobs (and the serial jobs) by:
+> kubectl scale job parallel-batch-job --replicas=3
+
+this will scale up the current run to 3, and then only 2 more needs to run.
+
+NAME                       READY     STATUS      RESTARTS   AGE
+parallel-batch-job-bfdm7   0/1       Completed   0          6m
+parallel-batch-job-cr28l   0/1       Completed   0          6m
+parallel-batch-job-dx8ln   0/1       Completed   0          6m
+parallel-batch-job-f6xxv   0/1       Completed   0          4m
+parallel-batch-job-z54mf   0/1       Completed   0          4m
+
+Limiting time for job to run
+============================
+You can limit how long a job runs by specifying in the metadata of the manifest:
+ activeDeadlineSeconds 
+when the job runs longer than that, the pod will terminate and the job will
+be marked as failed
+
+BackOffLimit
+============
+spec.backoffLimit specifies how many times to retry before being marked as failed.
+If not specified, it defaults to 6
+
+
+CronJobs
+========
+kubernetes supports cron jobs, allowing you to run a job in the future or 
+repeatedly at a specified interval
+
+-the kind will be CronJob
+-the spec.schedule will be a cron expression
+
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata: cron-batch
+  name: batch-job-interval
+spec:
+  schedule: "0,15,30,45 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: periodic-batch-job
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: main
+            image: luksa/batch-job
+
+Job resources will be created at approximately the scheduled time.
+The Job will then create the pods.
+
+Starting Deadline
+=================
+If you cronjob is time critical, you can set a deadline in seconds, 
+after which, if cron has not kicked off the job yet, it will be marked as failed:
+
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata: cron-batch
+  name: batch-job-interval
+spec:
+  schedule: "0,15,30,45 * * * *"
+  startingDeadlineSeconds: 15
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: periodic-batch-job
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: main
+            image: luksa/batch-job
+
+ 
