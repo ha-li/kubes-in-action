@@ -1,0 +1,363 @@
+topics in ch5
+-the main theme of ch5 is services
+-topics include:
+ * exposing groups of pods as single ip using Service resource
+     - creating services
+     - session affinity services
+     - multi-port services
+ * services discovery in the cluster
+ * exposing services to external clients
+ * finding/connecting to external services
+ * controlling pod readiness as part of a service
+ * trouble shooting services
+
+
+Most applications are meant to respond to external requests
+ eg: http requests coming from outside pods or 
+     events from external infrastructure (jms)
+
+
+In order to be able to consume other services an application must
+be able to find those pods
+ - in the old non-kubernetes world, a sys admin would be able to 
+   configure each client app by specifying the exact ip address 
+   or dns of the host
+ - in kubernetes this is not possible because 
+   * pods are constantly moving around (ephemeral)
+   * horizontal scaling means multiple pods provide the same service
+   * ips are assigned after the pod has been schedule to a node so
+     clients will not know the ip address of the server up front
+
+- to solve for this, kubernetes introduces the concept of a 
+  Service resource
+
+Kubernetes Service
+==================
+A Kubernetes Service is a resource you create that provides a single
+and consistent point of entry to a group of pods that do the same thing
+- each service ip and port never changes while the service exists
+- clients can connect to that ip and port to get access to the service
+  provided by the pods backing that service resource
+- clients don't know who the individual pods are and the count of those pods,
+  allows the pods to die and be re-created, move as needed
+
+eg
+a concrete example of this is a cluster of front end (ui) pods needing to
+connect to a back end database server
+- external clients need to be able to connect to the ui pods without concern
+  if there is only 1 or hundreds of instances of the front end
+- the front end pods need to connect to the back end database, but since
+  the database is running inside a pod, it may be moved around the cluster
+  any time, so its ip address may change, you want to allow this, without
+  having to reconfigure the front end pods each time the backend moves
+- so it this case there will be two services, one load balancing the front end
+  and one in front of the database
+
+Creating Services
+-----------------
+-client connections to the Service are load balanced across the pods of a Service
+-individual pods are set to a Service by the use of label selectors
+-Service resources are created just like any other kubernete resources, via a file 
+ manifest
+
+ eg: kubia-svc.yml
+
+apiVersion: v1
+kind: Service
+metadata:
+   name: kubia-svc
+spec:
+   ports:
+   - port: 80
+     targetPort: 8080
+   selector:
+     app: kubia
+
+-from the manifest: 
+  * the kind is Service
+  * the spec defines the port the service listens to client connections on (80)
+  * the target port is the pod port the service will forward to (8080), this is
+    what the pod application will handle requests on
+  * the selector defines which pods will be part of this service
+ so this Service will listen on port 80, and route each connection to port 8080
+ of one of the pods matching app=kubia label selector 
+
+Listing Services
+----------------
+to get the listing of services in you namespace
+
+$ kubectl get svc
+  NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+  kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP   19d
+  kubia        ClusterIP   10.99.161.109   <none>        80/TCP    1d
+
+The cluster ip is what pods inside the cluster connect to, so if your client is
+a part of this cluster and would like to use the service kubia, it will
+use the ip 10.99.161.109, port 80
+
+For pods that are external to the cluster, they need to use the external ip,
+which is covered later on
+
+But for the most part, services primary function is to provide a service 
+internal to the cluster
+
+Testing the Service
+-------------------
+several ways to test the service:
+- create a client pod that will send a request to the service ip address
+  and log the response of the service, you can then examine the pods log
+- ssh into the kubernetes nodes and use the curl command
+- execute the curl command inside an existing pod using the 'kubectl exec' 
+  command
+  
+  eg of executing the curl command inside an existing pod:
+
+  $ kubectl exec kubia-7nadol -- curl -s http://10.99.161.109
+  You've hit kubia-aawezg
+
+the kubectl exec command allows you to run a command inside a kubernetes 
+pod remotely. As long as you have kubectl installed, you issue
+kubectl exec with the pod you want to use, and then the command
+you want to run inside the pod
+
+
+   kubectl exec
+   kubia-7nadol                    <-- the pod i'm using as the host
+   --                              <-- separator
+   curl -s http://10.99.161.109    <-- the command to run inside the host pod
+
+
+this will send a curl command to the Service from above, and return the 
+response of the Service back to you, via the host pod
+
+the double dash (--) signals the end of the command options to kubectl, and
+anything following the -- is the actual command to run 
+
+kubectl exec is analogous to ssh into a pod, and then issuing the command 
+inside the pod, but done remotely in a elegant fashion for the user
+
+
+Service Affinity Configuration
+------------------------------
+In a normal service, the load balancer randomly selects a pod
+each time.
+
+A Service resource can be configured to be sticky with a simple 
+configuration in the manifest
+-sticky services will remember which pod was selected for each
+ client, and remember reuse the same pod for that client
+
+ apiVersion: v1
+ kind: Service
+ spec:
+   sessionAffinity: ClientIP
+ ...
+
+-this configuration will make the service proxy all requests 
+originating from the same client to the same pod.
+
+kubernetes does not support stickiness through cookie-based
+sessions because cookies are built on top of http
+-kubernetes session affinity does not operate the the http level
+-services deals with tcp/udp packets and do not care about the
+ payload they carry
+
+
+Multi-Port Services
+-------------------
+-a normal service exposes only 1 port, but you can configure 
+ multi-port services, 
+   ex if your pod application listens on both 80 and 443 
+      you could create a service to listen to 8080 for http, 
+      8443 for https and have the service forward to 
+      80 and 443 on the pods
+
+-creating multi-port service is done through configurating
+ the manifest:
+
+ apiVersion: v1
+ kind: Service
+ metadata: 
+   name: kubia
+ spec:
+   ports:
+     - name: http
+       port: 80
+       targetPort: 8080
+     - name: https
+       port: 443
+       targetPort: 8443
+     selector: 
+       app: kubia
+
+ this service exposes 2 ports, and applies the service to 
+ any pods with app=kubia labels
+
+
+Named Ports
+-----------
+When defining the ports on your pod, you can give them names
+
+ apiVersion: v1
+ kind: Pod
+ spec:
+   containers:
+   - name: kubia
+     ports:
+     - name: http
+       containerPort: 8080
+     - name: https
+       containerPort: 8443
+
+Then in the Service manifest, you can refer to the target ports 
+by their names:
+
+ apiVersion: v1
+ kind: Service
+ spec:
+   ports:
+   - name: http
+     port: 80
+     targetPort: http
+   - name: https:
+     port: 443
+     targetPort: https
+   selector:
+     app: kubia
+
+
+Service Discovery
+-----------------
+Kubernetes provides ways for client pods to discover a service ip and port
+using:
+  environment variables
+  dns
+
+Env Variables
+-------------
+-when a pod is first started up, kubernetes will create environment variables
+ of each existing service available at that time
+   - as long as the service is up before the pod, the pod will have access
+     to an env variable pointing to the ip and port of that service
+   - processes on the pod can then inspect their env variables to find
+     the services available
+
+to see what environment variables are available inside a pod:
+$ kubectl exec kubia-2jai3n env
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOSTNAME=kubia-b2xcx
+KUBERNETES_SERVICE_PORT=443
+KUBERNETES_PORT_443_TCP_PROTO=tcp
+KUBIA_SERVICE_PORT=80
+KUBIA_PORT_80_TCP_PROTO=tcp
+KUBIA_PORT_80_TCP_ADDR=10.99.161.109
+KUBERNETES_PORT=tcp://10.96.0.1:443
+KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1
+KUBIA_SERVICE_HOST=10.99.161.109
+KUBIA_PORT=tcp://10.99.161.109:80
+KUBIA_PORT_80_TCP=tcp://10.99.161.109:80
+KUBIA_PORT_80_TCP_PORT=80
+KUBERNETES_SERVICE_HOST=10.96.0.1
+KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443
+KUBERNETES_SERVICE_PORT_HTTPS=443
+KUBERNETES_PORT_443_TCP_PORT=443
+NPM_CONFIG_LOGLEVEL=info
+NODE_VERSION=7.10.1
+YARN_VERSION=0.24.4
+HOME=/root 
+
+
+-from the list of environment variables you can see that the
+ service has an env with it's name in all caps 
+-compare this output with the results of 
+$ kubectl get svc
+NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP   19d
+kubia        ClusterIP   10.99.161.109   <none>        80/TCP    1d
+
+
+So if you had a database service, you can name it backend-database,
+then its env would be BACKEND_DATABASE_SERVICE_HOST and 
+BACKEND_DATABASE_SERVICE_PORT
+
+
+Service Discovery thru DNS
+--------------------------
+In the kube-system namespace, you can find the DNS service called kube-dns
+
+-to switch namespace
+ $ kubectl config set-context $(kubectl config current-context) --namespace kube-system
+
+-to show the services
+ $ kubectl get svc
+
+   NAME                   TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)         AGE
+   kube-dns               ClusterIP   10.96.0.10     <none>        53/UDP,53/TCP   19d
+   kubernetes-dashboard   NodePort    10.97.247.33   <none>        80:30000/TCP    19d
+
+All the pods in the cluster are configured to use this dns
+-kubernetes automatically modifies each containers /etc/resolv.conf file
+-any dns query performed by a process on the pod will be handled by kube-dns
+-kube-dns knows all the services running in the system
+-each service gets a dns entry in the internal dns server
+  client pods that know the name of the service can access it thru its 
+  fully qualified domain name (fqdn), rather then thru env variables
+   eg for a back end database, the fqdn may be:
+       backend-database.default.svc.cluster.local
+
+   the fqdn is broken up into parts: servicename.namespace.cluster domain suffix
+      so service-name = backend-database
+         namespace = default
+         cluster-domain-suffix = svc.cluster.local
+   
+   dns only provides the host. the client must know the port number, which
+   means you should keep to standard ports (80, 443, 1521 etc), if not
+   the pod client can get the port number from the env variable
+
+   you can also omit the cluster-domain-suffix and even the namespace when
+   the client pod is in the same cluster and namespace as the service
+    allowing you to refere to the service as: backend-database
+
+(whether a pod uses the internal dns server or not is configurable thru the 
+ 'dnsPolicy' property of each pods spec)
+
+
+To illustrate the ability to find services through the dns service, login one of hte
+pods:
+   $ kubectl exec -it kubia-b2xcx bash
+
+then inside, run curl to hit the the kubia service (with and without the cluster,
+   namespace)
+
+   root@kubia-b2xcx:/# curl http://kubia.default.svc.cluster.local
+   You've hit kubia-42na43
+
+   root@kubia-b2xcx:/# curl http://kubia.default
+   You've hit kubia-32ah34
+
+   root@kubia-b2xcx:/# curl http://kubia
+   You've hit kubia-23b345
+
+And if you cat /etc/resolv.conf, you should see:
+    root@kubia-b2xcx:/# cat /etc/resolv.conf
+    nameserver 10.96.0.10
+    search default.svc.cluster.local svc.cluster.local cluster.local
+    ...
+
+Pinging Services Does not Work
+------------------------------
+Curling a service works, but pinging it will not work.
+The service ip is a virtual ip, and only works with the service port.
+Ping is a different protocol, so attempting to ping it will not work.
+
+Ping is ICMP based - ICM protocol does not have the concept of ports
+Ping has no port. (ICMP - Internet Control Message Protocol) 
+
+Ports belong to transport layer protocols like tcp and udp. 
+
+You can use ping inside the pods to ping other services (like google.com)
+but you cannot ping your services in the cluster unless the service
+has opened the port/icmp 
+
+
+

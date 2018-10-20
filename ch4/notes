@@ -55,7 +55,7 @@ HTTP Get liveness probe
   apiVersion: 1
   kind: Pod
   metadata:
-    name: kubia-livess
+    name: kubia-liveness
   spec:
     containers:
     - image: haja/kubia-unhealthy
