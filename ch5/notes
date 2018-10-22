@@ -6,6 +6,8 @@ topics in ch5
      - session affinity services
      - multi-port services
  * services discovery in the cluster
+     - external service resources
+     - endpoint resources
  * exposing services to external clients
  * finding/connecting to external services
  * controlling pod readiness as part of a service
@@ -359,5 +361,135 @@ You can use ping inside the pods to ping other services (like google.com)
 but you cannot ping your services in the cluster unless the service
 has opened the port/icmp 
 
+
+Endpoint Resources
+------------------
+Services appear to be a load-balancer to pods, but actually Services are not directly
+connected to the pod resources.
+- another type of resource sits between the Service resource and the Pod resource
+- endpoint resources
+
+When you do a describe on a servce, you will see the endpoint resources:
+ $ kubectl describe svc kubia
+   Name:              kubia
+   Namespace:         default
+   Labels:            <none>
+   Annotations:       <none>
+   Selector:          app=kubia
+   Type:              ClusterIP
+   IP:                10.99.161.109
+   Port:              <unset>  80/TCP
+   TargetPort:        8080/TCP
+   Endpoints:         172.17.0.5:8080,172.17.0.6:8080,172.17.0.7:8080
+   Session Affinity:  None
+   Events:            <none>
+
+ In the listing, the endpoints are clear.
+
+
+Enpoints reource is a list of IP addresses/ports exposing a service.
+Like any other kubernetes resource, you can display its basic info
+
+ $ kubectl get endpoints kubia
+   NAME      ENDPOINTS                                         AGE
+   kubia     172.17.0.5:8080,172.17.0.6:8080,172.17.0.7:8080   2d
+
+So even though the pod selector is defined in the service spec, it
+is not used directly, but rather, the selector is used to build
+a list of the ip/port exposing the service, which get stored
+in the endpoint resource. When a client resource connects to the
+service, the service proxy will select one of the endpoint ip/port
+values and redirect the incoming connections to that server.
+
+By having the service decoupled from the endpoints in this way, 
+you can reconfigure the services and update them manually.
+
+Creating a Service Endpoint Manually
+------------------------------------
+You can create a service without a pod selector
+-kubernetes will not create the Endpoints resource (because it doesn't
+ know what to include in the service)
+-you will have to create both a Service and Endpoints resource
+
+Creating a Service
+-to create a service manually and then assign the endpoints to 
+ that service yourself, first create a Service resource, 
+ without the pod selector
+
+ eg external-service.yml
+
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: external-service
+ spec:
+    ports:
+    - port: 80
+
+-the endpoints service name should match the Service name
+
+ eg external-service-endpoints.yml
+
+ apiVersion: v1
+ kind: Endpoints
+ metadata
+   name: external-service
+ spec:
+   - addresses:
+     - ip: 11.11.11.11
+     - ip: 22.22.22.22
+     ports:
+     - port: 80
+
+-the endpoints service name matches the service name and
+ contains the ip/port of the service
+-once these are created, 
+    the service can be used like any other service (fqdn or short name)
+    pods created after these will have envirnoment variables for the service
+    the ip address will be load balanced betweeen the endpoints
+
+-later on, if you migrate these services to kubernetes, you just need to
+ add a selector to the service, at which point, the endpoints become
+ automatically managed
+
+-if you have an existing Service resource with a selector, simply removing
+ the selector tells kubernetes to stop updating the endpoints
+
+
+Creating an Alias for an external service
+-----------------------------------------
+
+Say you have an external service you want to make use of like api.vendorco.com
+and you want to create an alias for this service so that inside your
+cluster, you can reference the external service using the alias. To do so:
+ - create a Service resource with spec.type = ExternalName
+
+ eg:
+   apiVersion: v1
+   kind: Service
+   metadata:
+     name: external-service
+   spec:
+     type: ExternalName
+     # the fqdn
+     externalName: api.vendorco.com
+     ports: 
+     - port: 80
+
+Once this service is created, pods inside the cluster can refer to this service
+by 'external-service' or 'external-service.default.svc.cluster.local' instead
+of its fqdn api.vendorco.com
+
+- the advantage of alias is that later on you can move the service without
+  changing the alias, so that your client pods can continue to point to
+  the alias, and you can change the underlying implementation simpley
+  by changing the value of externalName or by changing the type back to ClientIP
+
+- ExternalName service are implemented at the DNS level by a simple cname record
+
+Connecting to External Services (Service Discovery)
+===================================================
+
+kubernetes also allows pods to connect to external services
 
 
