@@ -8,7 +8,11 @@ topics in ch5
  * services discovery in the cluster
      - external service resources
      - endpoint resources
+     - external name alias
  * exposing services to external clients
+     - using service type - nodeport
+     - using service type - loadbalancer
+     - using ingress resource
  * finding/connecting to external services
  * controlling pod readiness as part of a service
  * trouble shooting services
@@ -487,9 +491,97 @@ of its fqdn api.vendorco.com
 
 - ExternalName service are implemented at the DNS level by a simple cname record
 
-Connecting to External Services (Service Discovery)
-===================================================
 
-kubernetes also allows pods to connect to external services
+
+Exposing Services to External Clients
+=====================================
+
+There are 3 main ways to expose your own service to external clients
+ * nodeport service
+ * loadbalancer service
+ * ingress resource
+
+NodePort Service
+----------------
+-in a nodeport service, each node will open a designated port, and all incoming
+ traffic on that port will be redirected to the service
+-this means that the service will be accessible at its internal ip address/port
+ as well as all nodes on that designated port
+
+- to create a nodeport service: eg kubia-svc-nodeport.yml
+  
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: kubia-nodeport
+  spec:
+    type: NodePort          <--- type
+    ports:
+    - port: 80              <--- port for internal cluster calls
+      targetPort: 8080      <--- target port on the pod
+      nodePort: 30123       <--- node port 
+    selector:
+      app: kubia
+
+-if you don't specify the specific nodeport to use, kubernetes will select one randomly for you
+
+-to see the basic infor of your service:
+  $ kubectl get svc kubia-nodeport
+    NAME             TYPE       CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+    kubia-nodeport   NodePort   10.98.250.158   <nodes>       80:30123/TCP   2m
+
+    - the type clearly shows NodePort
+    - the external ip should show <nodes>
+    - the port(s) should show both the internal and node port
+
+    - when you see a NodePort, you should immediately realize that it the service is
+      accessible on every node on that designated nodeport (30123)
+
+- you should be able to get the IPs of all your nodes by jsonpath (simpilar to xpath) :
+  $ kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}'
+  
+- on minikube, you can access NodePort services through the command:
+  $ minikube service <service-name> -n <namespace> 
+    eg minikube service kubia-nodeport
+    ( this will open up the browser and navigate to:  192.168.99.101:30123)
+     
+     so now you can curl this ip:port
+  $ curl 192.168.99.101:30123
+      You've hit kubia-b2xcx
+
+A good service to offer through NodePort would be IUS/AXS - except that nodeports services
+expose the service to external world also.
+
+NodePort types are a great way to expose services to the external world, however, if
+the client only points to one node, if that node fails, your client won't be able
+to acccess the service any more.
+
+It is better to put a loadbalancer in front of the service
+
+
+LoadBalancer 
+------------
+A loadbalancer type is an extension of the nodeport type, ie
+- kubernetes will provision a load balancer 
+- the load balancer will redirect traffic to the node ports across all the nodes, 
+- clients will connect to the service using the load balancers ip address
+- the load balancer will send to one of the nodes, on that dedicated port
+
+To create a load balancer for your service, set the service type to LoadBalancer instead of NodePort
+-the load balancer will have its own ip address
+
+ eg:
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: kubia-loadbalancer
+ spec:
+   type: LoadBalancer
+   ports:
+   - port: 80
+     targetPort: 8080
+   selector:
+     app: kubia
+
 
 
