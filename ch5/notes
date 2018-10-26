@@ -576,12 +576,423 @@ To create a load balancer for your service, set the service type to LoadBalancer
  metadata:
    name: kubia-loadbalancer
  spec:
-   type: LoadBalancer
+   type: LoadBalancer           <-- service type
    ports:
    - port: 80
-     targetPort: 8080
+     targetPort: 8080           # don't specify a port
    selector:
      app: kubia
 
+- note you do not specify a port for the loadbalancer unlike in the node port spec
+  where yo specified a port
+     - kubernetes will select a port (30817 as below) 
+
+- to see the details of this svc:
+  $ kubectl get svc kubia-loadbalancer
+  NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP         PORT(S)        AGE
+  kubia-loadbalancer   LoadBalancer   10.104.192.152   123.123.123.123     80:30817/TCP   1m
+
+  -it will take some time to provision the loadbalancer
+  -once the loadbalancer has been provisioned, you can hit the loadbalancer at its
+   ip:port to hit the service
+     $ curl 123.123.123.123:30817
+       You've hit kubia-as4122
+
+Routing of external clients using load balancer:
+-client requests hit the ip of the load balancer on port 80
+-the load balancer will route the request to one of the node ports on the implicit
+ port, from there the node port will forward to one of the pods 
+-as mentioned before, a load balancer is a type of node port with an additional
+ infrastructure the load balancer
+ (on minikube, the load balancer will never get provisioned)
+
+
+Optimizing the network hops
+---------------------------
+in both the case of the node port (and the loadbalancer), the request always goes
+from the client to a node port (via the load balancer) and then to a pod that
+may not be running on the node as the node port, so this costs an extra network hop
+-you can prevent this by configuring the service to redirect external 
+ traffic only to pods running on the node that receive the connection
+-set the externalTrafficPolicy field
+
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: kubia-loadbalancer
+ spec:
+   externalTrafficPolicy: Local          <--- optimize for network hops
+   type: LoadBalancer
+ ...
+
+Drawbacks of Optimizing the network hops
+----------------------------------------
+3 main drawbacks:
+* hanging connections
+* uneven distribution
+* requestor ip address lost
+
+-with the externalTrafficPolicy configuration set to Local, 
+ when an external connection is opened through
+ the nodeport, the service proxy will choose a local running pod
+    - if no such pod exists the connection will hang
+    - so need to ensure the loadbalancer forwards connections only to 
+      nodes where there is at least one such pod
+
+-if the service pod distribution is not even on the nodes, the load balancer
+ will load balance across the nodes, but then the pods handling the
+ request are not evenly distributed, so the service handling will
+ not be evenly distributed across the pods,
+   eg, say there are 2 nodes load balanced, so each node gets 50%
+       if one of the node in turn has 2 service pods, and the other node has 1 pod
+       then the one pod node handles 50% of traffic, and the other two
+       pods get 25% each, 
+
+-when a client inside a cluster connects to the service, the pod can obtain the
+ client ip from the packet, but using node ports, the packet source ip is 
+ lost because SNAT (source network address translation) is performed
+ on the packets, so the source ip is lost
+   - this is an issue for some types of services, ex security services
+   - the externalTrafficPolicy: Local will prevent the lost of the source ip
+     because SNAT is not performed
+
+Ingress Resources
+-----------------
+  ingress - the act of going in or entering, the right to enter.
+
+In order for ingress resource to work, an ingress controller needs to be
+running on the cluster
+ - not all kubernetes environments do so
+
+ - on minikube you can see the addons supported by:
+   $ minikube addons list
+     - addon-manager: enabled
+     - coredns: enabled
+     - dashboard: enabled
+     - default-storageclass: enabled
+     - efk: disabled
+     - freshpod: disabled
+     - heapster: disabled
+     - ingress: enabled
+     - kube-dns: disabled
+     - metrics-server: disabled
+     - nvidia-driver-installer: disabled
+     - nvidia-gpu-device-plugin: disabled
+     - registry: disabled
+     - registry-creds: disabled
+     - storage-provisioner: enabled
+
+ - to enable the ingress addon:
+    $ minikube addons enable ingress
+      ingress was successfully enabled
+
+
+ - usually the ingress service will be enabled on the kube-system namespace but
+   not necessary, so you can list all pods across all namespaces to check
+    $ kubectl get pods --all-namespaces
+      NAMESPACE     NAME                                        READY     STATUS    RESTARTS   AGE
+      ... 
+      kube-system   nginx-ingress-controller-5984b97644-z7m5p   1/1       Running   0          2m
+      ...
+
+Creating an ingress resource
+----------------------------
+kubia-ingress.yml
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: kubia-ingress
+spec:
+  rules:
+  - host: kubia.example.com             <--- this address will be serviced by this ingress
+    http:                               <--- protocol serviced (http://kubia.example.com)
+      paths:
+      - path: /
+        backend:
+          serviceName: kubia-nodeport   <--- sent to this service
+          servicePort: 80               <--- on this port
+
+
+This creates an ingress service that handles all requests sent to
+http://kubia.example.com
+- and forwards to the kubia-nodeport on port 80
+
+To find your ingress service
+ $ kubectl get ingresses
+   NAME      HOSTS               ADDRESS     PORTS     AGE
+   kubia     kubia.example.com   10.0.2.15   80        4m
+
+ 
+Then you need to add that host and address to your DNS server /etc/hosts
+ so that it knows to resolve kubia.example.com to 10.0.2.15
+
+then you can run curl http://kubia.example.com
+
+and you will have accessed the service through ingress.
+
+On cloud providers, the ingress controller actually provisions a load balancer behind
+the scenes.
+
+
+Advantage of Ingress Resource over Load Balancer
+------------------------------------------------
+Each LoadBalancer service requires it own load balancer with its own public ip.
+An ingress service only requires one load balancer, and in fact the same
+ingress service can be reused for multiple services
+ - when a request is sent to the ingress service, the host.com/path in the
+   request determine which service the request is forwarded to 
+
+ - ingress service also operate at the application layer (http) stack, 
+   so it can provide feature such as cookie-based session affinity
+   which services cannot
+
+
+Exposing multiple services
+--------------------------
+From the spec for ingress, you'll see that the rules and paths are lists, so
+You can use one ingress service to expose 
+ - multiple host  
+ - multiple paths
+
+Mapping different services to different paths of the same ingress host
+ eg: ingress-multi-paths.yml
+
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+   name: kubia-multi-paths
+ spec:
+   rules:
+     - host: kubia.example.com
+       http:
+         paths:
+         - path: /kubia
+           backend:
+             serviceName: kubia
+             servicePort: 80
+         - path: /foo
+           backend:
+             serviceName: bar
+             servicePort: 80
+
+ this definition will route
+   kubia.example.com/kubia to kubia service
+   kubia.example.com/foo to bar service
+
+ so clients will be able to reach two different services through a single ip address
+ (the ingress controller)
+
+Mapping different services to different hosts
+ eg: ingress-multi-host.yml
+ 
+ apiVersion: extensions/v1beta1
+ kind: Ingress
+ metadata:
+   name: kubia-multi-paths
+ spec:
+   rules:
+     - host: foo.example.com
+       http:
+         paths:
+         - path: /foo
+           backend:
+             serviceName: foo
+             servicePort: 80
+     - host: bar.example.com
+       http:
+         paths:
+         - path: /bar
+           backend:
+             serviceName: bar
+             servicePort: 80
+
+ This ingress service will be able to service both
+    foo.example.com will be routed to foo
+    bar.example.com will be routed to bar 
+  depending on the Host header in the request.
+
+ The DNS server will need to point foo.example.com and bar.example.com domain names
+ to the Ingress controllers ip address
+
+
+Configuring Ingress to Handle TLS Traffic
+-----------------------------------------
+-when a client opens a TLS connection to an ingress controller, the controller
+ will terminate the TLS connection
+   - the communication between the client and the controller is encrypted,
+   - the communication between the controller and the back end pod is not
+   - the application running in the pod doesn't need to support TLS, so it 
+     can just accept http traffic, allowing the ingress controller to 
+     take care of everything TLS related.
+   - in order for the ingress controller to be able to handle TLS it needs
+     to have an attached certificate + private key 
+   - the certificate and private key are stored in a kubernetes resource called
+     Secrets
+   - the Secrets resource is referenced by the ingress manifest (yml file)
+
+ Creating a Private Key and Certificate
+ --------------------------------------
+ creating the secrets consists of 3 steps
+ 1. generate teh private key
+ 2. generate the certificate
+ 3. generate the Secrets resource
+
+ $ openssl genrsa -out tlskey 2048
+   Generating RSA private key, 2048 bit long modulus
+   ... (file called tls.key is created - the private key)
+
+ $ openssl req -new -x509 -key tls.key -out tls.cert -days 360 -subj /CN=kubia.example.com
+   ... (file called tls.cert is created - the certificate)
+
+ $ kubectl create secret tls tls-secret --cert=tls.cert --key=tls.key
+   secret/tls-secret created
+
+   Now the private key and certificate are stored in a Secret called tls-secret.
+   Now the Ingress resource can be updated to accept HTTPS requests by adding
+   a configuration 
+      secretName: tls-secret 
+   to the ingress manifest (kubia-ingress-tls.yml)
+
+   apiVersion: extensions/v1beta1
+   kind: Ingress
+   metadata:
+     name: kubia
+   spec:
+     tls:                          <--- tls configuration
+     - hosts:
+       - kubia.example.com
+       secretName: tls-secret      <--- secrets 
+     rules:
+     - host: kubia.example.com
+       http:
+         paths: 
+         - path: /
+           backend:
+             serviceName: kubia-nodeport
+             servicePort: 80
+
+  so this tls configuration is for the kubia.example.com hostname
+  the private key and cert are obtained from the tls-secret created above      
+
+  if you already have the Ingress Resource created without TLS support, 
+  you can apply it by invoking 
+   $ kubectl apply -f kubia-ingress-tls.yml
+
+  which will update the Ingress resource
+
+ Once the TLS capable Ingress resource is ready, it can 
+ accept https requests.
+
+
+ Signing Certificates using CertificateSigningRequest resource
+ -------------------------------------------------------------
+ Kubernetes supports signing of certificate, of course the
+ certificate signer component needs to be running in the cluster, otherwise
+ signing and approving/denying certificates will have no effect.
+
+
+Readiness Probes (Signaling when a Pod is Ready) 
+================================================
+A pod or application spinning up takes some time before it can accept
+requests
+- a readiness probe is needed in order for the pod to be able to
+  signal that it is ready to accept requests
+- kubernets is able to check if the app is running in the container
+  by seeing if it responds to a simple GET  request at some
+  defined endpoint
+- the readiness probe implemetation detail is specific to the app,
+  and the responsibility of the app developer
+
+Like the liveness probe, there are 3 types
+1. exec probe checks the processes exit code
+2. HTTP GET probe sends a HTTP GEt request to the container, and the
+   container responds if it is ready or not
+3. TCP Socket probe opens a TCP connection to a specific port of 
+   the container. if the connection is established, the container
+   is considered ready
+
+
+When a container is started, kubernetes can be configured to wait for
+a configurable time to pass before the first readiness probe is performed.
+After the delay, the readiness probe is checked periodically, if the probe
+fails, the pod is removed from the service, until it is ready 
+again, at which point it will be added back to the service
+
+Unlike the liveness probe, a readiness probe will not be able to kill
+of the service if it fails
+Liveness probes keep pods healthy by killing of unhealthy containers and
+ replacing them with new healthy ones
+Readiness probes only make sure that the pod is ready to serve requests 
+
+Adding a readiness probe
+------------------------
+You can add a readiness probe to a live replication controller definition:
+
+ $ kubectl edit rc kubia
+
+ apiVerison: v1
+ kind: ReplicationController
+ ...
+ spec:
+    ...
+   template:
+   ...
+     spec:
+       containers:
+       - name: kubia
+         image: luksa/kubia
+         readinessProbe:
+           exec:
+             command:
+             - ls
+             - /var/ready
+   ...
+
+ This is a simple readiness probe.
+ The ls command returns 0 if the file exists, non-zero exit code otherwise.
+ If the file exists, the readiness probe succeeds.
+
+ So you can toggle the results by creating the file.
+
+ The readiness of a pod is captured by: 
+  $ kubeclt get pods 
+    NAME          READY     STATUS    RESTARTS   AGE
+    kubia-b2xcx   0/1       Running   0          5d
+    kubia-khn7s   0/1       Running   0          5d
+    kubia-tcd2n   0/1       Running   0          5d
+
+    Column READY shows all the pods that have passed the readiness probe.
+
+    to create teh file you can run
+  $ kubectl exec kubia-234vas -- touch /var/ready
+
+  $ kubeclt get pods 
+    NAME          READY     STATUS    RESTARTS   AGE
+    kubia-b2xcx   1/1       Running   0          5d
+    kubia-khn7s   1/1       Running   0          5d
+    kubia-tcd2n   1/1       Running   0          5d
+
+  
+ In the real world, your readiness probe would be much more
+ sophisticated.
+
+ You can also define your pod label so that you can manually
+ add and remove a pod with a simple label change
+   eg: enabled=true
+ as a label to your pod and label selector, then remove this 
+ label or set to false when you want to take the pod out
+ of service
+
+Notes about Readiness Probes
+===========================
+-all pods should have readiness probes, otherwise they will
+ be added to a service endpoint immediately, even if they
+ are not ready
+
+-kubernets will immediate remove the pod from all services as
+ soon as the pod is deleted, so you do not need to fail 
+ your readiness probe during the shutdown procedure.
+ kubernetes knows to cleanly shutdown pods
 
 
