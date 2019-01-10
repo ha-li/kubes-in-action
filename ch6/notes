@@ -1,0 +1,192 @@
+Volumes - attaching disk storage to containers
+
+containers can access external storage through the use of volumes
+-can be used to share storage between multiple containers
+
+-pods are like logical hosts
+-containers house processes that run inside the logical hosts
+-the processes share resources including cpu, ram, network interfaces
+-disk does not get shared between the containers because each container has its own
+ isolated filesystem
+
+-each filesystem in the container starts off the same in each container
+-as the processes in the container runs, the file system is altered, but these
+ changes are local only to the container. other containers do not see the same 
+ changes
+
+-when a container is restarted, the container filesystem again will revert back to
+ the original state
+
+-in order to be able to persist data into files in the container, you need to use
+ volumes
+  volumes are part of the pod and share the same lifecycle as the pod
+  - volumes are created when the pod is started, and destroyed when the pod is deleted
+  - volumes contents are persisted across container restarts, and across lifecycles 
+    of containers
+  - if a pod contains multiple volumes, the containers can use them all at once
+
+- Volumes like containers are key components of pods, and so are defined in the 
+  pod spec, just like containers
+- volumes are not stand alone kubernetes components, and so cannot be created and
+  destroyed on their own
+- a volume is available to all containers on the pod, but must be mounted on each
+  container that needs access to it
+- in a container, the volume can be mounted anywhere in the containers filesystem
+
+
+eg of a use of a volume
+=======================
+
+Consider a pod that has 3 containers
+ - a web-server container
+ - an agent that generates html pages container
+ - a log processing container
+
+ the agent creates html pages that are then served by the web server,  which
+ also will generate logs. the log processor will ingest those logs and save to
+ an external data source, as well as rotate/compress/analyze the logs
+
+
+ each container has its own identity and purpose, but if they operate in 
+ isolation, they would not be very useful, ie
+    the html agent would be generating html pages, but
+    the html pages would never get presented by the web-server
+
+    the web server would generate logs, but the log analyzer would never
+    see the log files
+
+    so we want to use 2 volumes:
+      - one to share between the web-server and the agent
+      - one for the log files to go into shared with the log analyzer
+
+
+Types of Volumes
+================
+-emptyDir - the volumes start of empty and gets filled
+-hostPath - a directory from the nodes filesystem gets mounted into the pod
+-gitRepo  - a volume initialized from a git repo
+-nfs      - an nfs share mounted into the pod
+-gcePersistentDisk - a Google Compute Engine Persistent Disk for mounting the cloud provider
+            specific storage
+-awsElasticBlockStore - an AWS specific storage
+-azureDisk - an Azure specific storage
+-configMap/secret/downwardAPI - special volumes for expsoing kubbernetes resources and cluster
+             info to the pod
+-persistentVolumeClaim - a way to pre/dynamically provision persistent storage
+
+
+
+EmptyDir Volume
+---------------
+-starts off as an empty directory
+-apps in the pod can write any files it needs to it
+-lifetime of volume is tied to the pod, so volume persists between container restarts
+ but is lost when the pod is deleted
+-is useful for sharing files between containers in the same pod, or as temporary storage
+ for a container
+
+eg of a emptydir volume in the pod spec
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fortune
+spec:
+  containers:
+  - image: luksa/fortune
+    name: html-generator
+    volumeMounts:
+    - name: html
+      mountPath: /var/htdocs
+  - image: nginx:alpine
+    name: web-server
+    volumeMounts:
+    - name: html
+      mountPath: /usr/share/nginx/html
+      readOnly: true
+    ports:
+    - containerPort: 80
+      protocol: TCP
+  volumes:
+  - name: html
+    emptyDir: {}
+
+this spec declares 2 containers (luksa/fortune) and nginx:alpine,
+and an emptyDir volume called html. The emptyDir volume is used in both 
+containers at different mount points, one of which (web-server container)
+is a read only volume.
+
+in the above spec, the volume was created on the actual disk of the node hosting the pod
+but it is also possible to tell kubernetes to create the emptyDir volume on a
+tmpfs filesystem (in memory). To do so, set the medium to Memory eg
+
+   volumes:
+     - name: html
+       emptyDir:
+         medium: Memory
+
+
+GitRepo volume is a emptyDir volume that clones a git repo, checking out a specific
+revision when the pod is starting up
+
+To declare a gitRepo volume, see the above spec which the volumes stanza as:
+
+   apiVersion: v1
+   kind: Pod
+   metadata:
+     name: gitrepo-volume-pod
+   spec:
+   ...
+   volumes:
+   - name: html
+     gitRepo:
+       repository: https://github.com/luksa/kubia-webbsite-exmaple.git
+       revision: master
+       directory: .
+
+   this tells the gitrepo to clone, the branch (master) as well as the directory
+   on the repo to clone to, in this case the root dir (.)
+     if you don't set the directory to the . (dot) the repo will be cloned into
+     the kubia-website-example subdirectory, which is not what you want.
+
+   if you make a commit to the repo, the pod has to be deleted and a new pod
+   will pick up the changes, otherwise you will have to write custom code
+   to sync the changes periodically
+
+   the book has recommended steps for doing this, in a side car volume
+
+
+hostPath volume
+---------------
+some pods will need to be able to read from the nodes filesystem or nodes devices
+-to read configurations from the node
+
+this is done using a hostPath volume
+
+a hostPath volume points to a specific file/directory on the node's filesystem. Pods running 
+on the same node and using the same path on the hostPath volume will see the same files
+-the hostPath volume does not get deleted when the pod torn down, subsequent pods
+ using the same hostPath will see what was left behind by the previous pod
+
+-do not use hostPath volumes for database's data directory because when the pod moves (as
+ it frequently does) the new node will not have the same directory so the pod will not see
+ the data
+
+-hostPath volumes are typically used in system-level pods where the system configurations
+ are stored in a node directory that is then set as a hostPath volume on the pods
+ - most of the kube-system pods have a hostPath volume
+
+-the spec for a hostPath volume looks like:
+
+ ...
+ Volumes:
+   varlog:
+     Type: HostPath
+     Path: /var/log
+   varlibdockercontainers:
+     Type: HostPath
+     Path: /var/libb/docker/containers
+
+-common uses for hostPath volume - to hold CA certificates, kubeconfig settings, nodes log files
+
+
