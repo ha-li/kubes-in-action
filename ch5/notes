@@ -996,3 +996,26 @@ Notes about Readiness Probes
  kubernetes knows to cleanly shutdown pods
 
 
+Headless Services
+-----------------
+A headless service in kubernetes is a service without a load balancer.
+-such headless service will not have the single ip address that a load balancer
+ service provides, but rather, as many ips as there are pods in the
+ kubernetes cluster.
+
+-to create a headless service, set the clusterIP to None in the spec:
+ eg: kubia-headless.yml
+
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: kubia-headless
+ spec: 
+   clusterIP: None
+   ports:
+   - port: 80
+     targetPort: 8080
+   selector:
+     app: kubia
+
+
