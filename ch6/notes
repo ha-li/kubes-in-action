@@ -190,3 +190,56 @@ on the same node and using the same path on the hostPath volume will see the sam
 -common uses for hostPath volume - to hold CA certificates, kubeconfig settings, nodes log files
 
 
+Persistent Storage Volumes
+==========================
+in order to use a volume for storage, you need to be able to make the volume available on
+any node that the pod may be moved to in the future.
+ - it must be stored on a network attached storage (SAN)
+ - different cloud providers will make SAN available through their cloud technology
+   google cloud uses GCE (Google Cloud Compute) you will use a GCE Persistent Disk 
+   
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongodb
+spec:
+  volumes:
+  - name: mongodb-data
+    gcePersistentDisk:
+      pdName: mongodbb
+      fsType: ext4
+  containers:
+  - image: mongo
+    name: mongodb
+    volumeMounts:
+    - name: mongodb-data
+      mountPath: /data/db
+    ports:
+    - containerPort: 27017
+      protocol: TCP
+
+ - on AWS EC2, you would use awsElasticBlockStore volume for persisting storage
+ 
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mongodb
+spec:
+  volumes:
+  - name: mongodb-data
+    awsElasticBlockStore:
+      volumeId: my-volume
+      fsType: ext4
+  containers:
+  - 
+
+Decoupling Pods From the Underlying Storage Technology
+------------------------------------------------------
+Developers should not to know the underlying storage technolog to make use of it, that
+is the domain of the cluster administrator
+-the kubernetes developer should be able to request the persistent storage like
+ they do CPU, memory, and other resources
+
+-to do so, two new resources are Persistent-Volumes and PersistentVolumeClaims
+
+to be continued 
