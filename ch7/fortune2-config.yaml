@@ -1,0 +1,8 @@
+apiVersion: v1
+data:
+   ninja: haja
+   orange: new-black
+   grey: rain
+kind: ConfigMap
+metadata:
+   name: fortune2-config
