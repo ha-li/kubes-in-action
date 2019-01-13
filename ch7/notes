@@ -312,6 +312,80 @@ in the container can obtain the entry's value by reading the contents of the fil
 
 -this is the ideal way to pass large config files to the container
 
+first create a directory nginx-conf for holding all your config files, 
+in nginx-conf will be 2 files, my-nginx-config.conf and sleep-interval
 
+ my-nginx-config.conf will be:
+
+server {
+  listen       80;
+  server_name  www.kubia-example.com;
+
+  gzip on;
+  gzip_types text/plain application/xml;
+
+  location / {
+    root   /usr/share/nginx/html;
+    index  index.html index.htm;
+  }
+}
+
+sleep-interval will be:
+
+25
+
+create a config map called fortune-config from this directory
+
+> kubectl create configmap fortune-config --from-file=nginx-conf
+configmap/fortune-config created
+
+To see the contents of this configmap:
+> kubectl get configmap fortune-config -o yaml
+apiVersion: v1
+data:
+  my-nginx-config.conf: "server {\n  listen       80;\n  server_name  www.kubia-example.com;\n\n
+    \ gzip on;\n  gzip_types text/plain application/xml; \n \n  location / {\n    root
+    \  /usr/share/nginx/html;\n    index  index.html index.htm;\n  }\n}\n"
+  sleep-interval: |
+    25
+kind: ConfigMap
+metadata:
+  creationTimestamp: 2019-01-13T23:01:29Z
+  name: fortune-config
+  namespace: default
+  resourceVersion: "584004"
+  selfLink: /api/v1/namespaces/default/configmaps/fortune-config
+  uid: 2975392f-1787-11e9-9d69-080027551fc7
+ 
+
+To create a volume populated with teh contents of a ConfigMap:
+-create a volume that references the configMap by name, 
+-mount the volume in a container
+-initialize the volume with files created from a configMap entry
+
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fortune-configmap-volume
+spec:
+  containers:
+  - image: nginx:latest
+    name: web-server
+    volumeMounts:
+    ...
+    - name: config              <------ 1
+      mountPath: /etc/nginx/conf.d
+      readOnly: true
+    ...
+  volumes:
+  ...
+  - name: config                <-------2
+    configMap:                  <-------2
+      name: fortune-config      <-------2
+  ...
+
+This spec 2) defines a volume named config that is a configMap named fortune-config
+and 1) references 2), mounting it at mountPath /etc/nginx/conf.d so that nginx automatically uses it
 
 
