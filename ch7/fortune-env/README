@@ -17,3 +17,7 @@ to run this docker image
   kubectl port-forward fortune-env 8080:80
 
  the pod spec creates a env variable for 30 secs that is passed into the docker container
+
+ to see the effects, either point your browser to localhost:8080
+ or curl http://localhost:8080
+
