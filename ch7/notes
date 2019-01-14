@@ -135,48 +135,90 @@ If you need to reuse the value of a previously set env variable:
     - name: SECOND_VAR
       value: "$(FIRST_VAR)bar"
 
+
+Drawbacks of harding coding environment variables
+-------------------------------------------------
+Hard coding environment variables in a pod spec means to need separate pod spec for your
+production and development pods. You want to reuse the same pod spec, but have different
+configuration values in different environments.
+
+This is where ConfigMap resources comes into play.
+
+
+
 Using ConfigMap to Decouple Configuration
 -----------------------------------------
+You want to be able to decouple config options that varying in different environments separate
+from the source code. Your pod descriptor is really source code for your application, so
+you want really want the configurations outside of your pod description.
+
+ConfigMaps
+----------
 ConfigMaps are objects that hold key/value pairs. The values can be short literals
 to full config files
+
+Applications doesn't need to read the config map directly, or even know that it exists.
+The contents of the config map are passed to containers either as environment variables or
+as files in a volume.
+- if the content is referenced as a command line arg, then you can use the notation $(ENV_VAR)
+  like done in the args example above
+-if the content of the config map is referenced as a file in a volume, then you can treat it as
+ so (below)
+
+Having the config in a separate stand-alone obbject like this allows you to keep multiple
+manifests for configMaps with the same name. Pods reference the configMap by name.
+
 
 Creating a ConfigMap
 --------------------
 There are two ways to create a config map
  - kubectl create configmap with simple values
- - kubectl create
+ - kubectl create configmap from files stored in disk
        1) with yaml descriptors
        2) with conf files
        3)
 
+ both are created using: 
+     kubectl create configmap ...
+
+Simple Values
+-------------
 the simplest way to create a configmap is by using the kubectl create command:
 
- > kubectl create configmap fortune-config --from-literal=sleep-interval=25
+ > kubectl create configmap fortune-config-literal --from-literal=sleep-interval=25
 
    this will create a config map called fortune-config that will hold one value:
       sleep-interval : 25
 
- > kubectl create configmap simple-config --from-literal=foo=bar --from-literal=bar=bax --from-literal=one=two
-   this will create a config map called simple-config with 3 values:
-      foo : bar
-      bar : bax
-      one : two
+   to see this config map, 
+ > kubectl get configmap fortune-config-literal -o yaml
+    and you wil get back its yaml descriptor
 
- you can see the yaml descriptors for these two config maps using kubectl get configmap:
- > kubectl get configmap fortune-config -o yaml
  apiVersion: v1
  data: 
     sleep-interval: "25"
  kind: ConfigMap
  metadata:
      creationTimestamp: 2019-01-13T19:56:59Z
-     name: fortune-config
+     name: simple-config-literal
      namespace: default
      resourceVersion: "84354"
      selfLInk: /api/v1/namespace/default/configmaps/fortune-config
      uid: 6370a19c-176d-11e9-9d69-080027551fc7
+ 
 
- > kubectl get configmap simple-config -o yaml
+ You can also create multiple literals at the same time under one config map
+
+ > kubectl create configmap multi-config-literal --from-literal=foo=bar --from-literal=bar=bax --from-literal=one=two
+   this will create a config map called simple-config with 3 values:
+      foo : bar
+      bar : bax
+      one : two
+
+ you can see the yaml descriptors for these two config maps using kubectl get configmap:
+
+ > kubectl get configmap multi-config-literal -o yaml
+
  apiVersion: v1
  data:
    bar: baz
@@ -185,7 +227,7 @@ the simplest way to create a configmap is by using the kubectl create command:
  kind: ConfigMap
  metadata:
    creationTimestamp: 2019-01-13T19:58:47Z
-   name: myconfigmap
+   name: multi-config-literal
    namespace: default
    resourceVersion: "576007"
    selfLink: /api/v1/namespaces/default/configmaps/myconfigmap
@@ -197,6 +239,15 @@ the simplest way to create a configmap is by using the kubectl create command:
  > kubectl create -f fortune2-config.yaml
    
    (the only data required in the metadata section is name:)
+apiVersion: v1
+data:
+   ninja: haja
+   orange: new-black
+   grey: rain
+kind: ConfigMap
+metadata:
+   name: fortune2-config
+
 
  Then to see the config map content:
  > kubectl get configmap fortune2-config -o yaml
