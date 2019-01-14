@@ -1,3 +1,82 @@
+This chapter is about configmap volumes and secret volumes
+
+
+Overriding Docker default commands and arguments
+-----------------------------------------------
+In a Dockerfile, the two instructions in ENTRYPOINT and CMD serve very specific purpose:
+ ENTRYPOINT - defines the executabble invoked when the container is started
+ CMD - the arguments to pass to ENTRYPOINT
+
+although you can use CMD to specify the full command and argument to execute, the 
+correct way is through ENTRYPOINT, and only specify CMD if you want to define the
+default arguments.
+
+Then the image can be run without any arguments: 
+ > docker run <image>   ( this will trigger ENTRYPOINT )
+
+To specify arguments:
+ > docker run <image> <arguments>  (this will pass <arguments> as CMD to ENTRYPOINT)
+
+ENTRYPOINT supports two forms:
+-  shell form ENTRYPOINT node app.js
+-  exec form ENTRYPOINT ["node", "app.js"]
+
+
+to build haja/fortune:args:
+ docker build -t docker.io/haja/fortune:args .
+to push it to docker hubb
+ docker push docker.io/haja/fortune:args
+
+to run the image locally:
+ docker run -it docker.io/haja/fortune:args
+
+
+If you are building a kubernetes pod, you can choose to override the container ENTRYPOINT and
+CMD. To do that, in the spec:
+
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - image: some/image
+    command: ["/bin/command"]
+    args: ["arg1", "arg2", "arg3"]
+...
+
+-most of the time you will only set the args and rarely will you override the command.
+-once the command and args are set, they cannot be updated after the pod is created
+
+
+So using the above, we can create a pod spec that overrides a CMD argument:
+
+> vi fortune-override-args.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fortune-override
+spec:
+  containers:
+  - image: haja/fortune:args
+    args: ["2"]                    <---- this is an override of content from ch6
+    name: html-generator
+    volumeMounts:
+    - name: html
+      mountPath: /var/htdocs
+  - image: nginx:alpine
+    name: web-server
+    volumeMounts:
+    - name: html
+      mountPath: /usr/share/nginx/html
+      readOnly: true
+    ports:
+    - containerPort: 80
+      protocol: TCP
+  volumes:
+  - name: html
+    emptyDir: {}
+
+
+
 Specifying Environment Variables in a Container Definition
 ----------------------------------------------------------
 you can pass environment variables to a container in the pod spec:
@@ -387,5 +466,74 @@ spec:
 
 This spec 2) defines a volume named config that is a configMap named fortune-config
 and 1) references 2), mounting it at mountPath /etc/nginx/conf.d so that nginx automatically uses it
+
+After running the container, if you look in /etc/ngxin/conf.d you should see
+my-nginx-config.conf
+sleep-interval
+
+Since you don't really want sleep-interval as a file, and you are going to pass it in as a 
+env variable, you really want to populate a configMap volume with only part of the configMap's
+entries:
+
+  ...
+  volumes:
+  - name: config
+    configMap:
+      name: fortune-config
+      items:                            <-----1
+      - key: my-nginx-config.conf       <-----2
+        path: gzip.conf                 <-----3
+
+1 using items: will select the entries to include in the volume
+2 selects the entry specified bby key
+3 the name of the file you want it to be saved as (gzip.conf)
+
+Mounting a volume as a directory will hid any files in the original /etc/nginx/conf.d
+which is okay if that is what you want, but you can also just mount a file into a directory
+
+...
+spec:
+  containers:
+  - image: some/image
+    volumeMounts: 
+    - name: myvolume
+      mountPath: /etc/someconfig.conf   <-----1
+      subPath: myconfig.conf            <-----2
+
+1 This specifies you are mounting a file
+2 you are only mounting the myconfig.conf entry (part of the volume)
+
+By default, all files in a configMap volume are 644 (-rw-r-r--).
+To change that:
+
+...
+volumes:
+- name: config
+  configMap:
+    name: fortune-config
+    defaultMode: "6600"    <-----1
+
+1 will change the files to -rw-rw----
+
+
+Updating App config without restarting
+--------------------------------------
+when you use an environment variable or command line arg, you have to restart the container
+to pick up changes
+
+configmap changes exposed as a volume allows you to update the config without having to 
+recreate the pod or even restart the container
+-when you update a configmap, all the files in the volume referencing it are updated,
+ the process then needs to detect they've been changed and reload them
+
+
+Secrets
+--------
+secrets are like config maps except that they hold secret information
+-secrets can be passed to the container as environment variable or 
+- expose secret entries as files in a volume
+
+secrets are only distributed to nodes that runt he pods that need access to the Secret volume
+-secrets are stored in memory, preventing the need to wipe the disk after 
 
 
