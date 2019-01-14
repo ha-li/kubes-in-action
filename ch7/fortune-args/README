@@ -1,0 +1,22 @@
+to build this docker image:
+ docker build -t docker.io/<id>/fortune:args .
+
+to push this docker image to docker hub
+ docker push docker.io/<id>fortune:args
+
+to run this docker image
+ docker run -it docker.io/<id>/fortune:args
+   the Dockerfile defaults to 10 secs loop
+
+   the pod spec overrides the default (10) with 2 secs loop
+
+to create a kubernetes pod with this container, use fortune-override-args.yaml
+ kubectl create -f fortune-override-args.yaml
+
+to add port forwarding 
+ kubectl port-forward fortune-override 8080:80
+
+to see the new fortunes generated:
+ curl http://localhost:8080
+
+

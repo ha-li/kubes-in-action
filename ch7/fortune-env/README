@@ -1,0 +1,19 @@
+to build this docker image:
+ docker build -t docker.io/<id>/fortune:env .
+
+to push this docker image to docker hub
+ docker push docker.io/<id>fortune:env
+
+to run this docker image
+ docker run -it docker.io/<id>/fortune:env
+ but since INTERVAL is not defined, you will see an error.
+ the only way is to run this as a kubectl defined with a spec that defines INTERVAL as an environment variable
+ 
+
+ this is what the pod spec ../fortune-env.yaml is for
+  kubectl create -f fortune-env.yaml
+
+ set up port-forwarding:
+  kubectl port-forward fortune-env 8080:80
+
+ the pod spec creates a env variable for 30 secs that is passed into the docker container

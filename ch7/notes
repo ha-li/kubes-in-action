@@ -1,5 +1,9 @@
 This chapter is about configmap volumes and secret volumes
 
+topics of review
+-specifying arguments to pass config options to container using command line arguments 
+-using env variables as a way to config container
+-using configmap volumes
 
 Overriding Docker default commands and arguments
 -----------------------------------------------
@@ -29,6 +33,12 @@ to push it to docker hubb
 
 to run the image locally:
  docker run -it docker.io/haja/fortune:args
+
+
+To see the contents of the file generated on the docker image:
+ docker exec <container_id> more /etc/htdocs/index.html
+
+you should see a new file generated every 10 secs (from ch6) and x secs from this chapter 
 
 
 If you are building a kubernetes pod, you can choose to override the container ENTRYPOINT and
@@ -75,11 +85,31 @@ spec:
   - name: html
     emptyDir: {}
 
+the changes above means 2 is the arg to fortune:args, which means the loop runs every 2 secs
+and generates a new /var/htdocs/index.html every 2 secs, vs in ch6, it was always 10 secs
 
+In this example, there was only 1 argument to pass. If you have multiple arguments, you can use
+the list notation:
+
+...
+spec:
+  containers:
+  - image: haja/fortune:args
+    args: 
+    - foo
+    - bar
+    - "15"
+    name: html-generator
+...
+
+to see the kubernetes pod spec for overriding default arguments see contents of fortune-args
 
 Specifying Environment Variables in a Container Definition
 ----------------------------------------------------------
 you can pass environment variables to a container in the pod spec:
+-there is not an option to define a pod env variable and have all containers in the pod inherit it
+-the environment variable is defined at the container level using the pod spec.
+-if you want each container to have the same value, you need to specify in each container
 
 apiVersion: v1
 kind: Pod
@@ -94,7 +124,8 @@ spec:
     name: html-generator
 ...
 
-note that the variable is set at the container level
+see contents of fortune-env for the kubernetes pod spec and the docker container.
+
 
 If you need to reuse the value of a previously set env variable:
 
