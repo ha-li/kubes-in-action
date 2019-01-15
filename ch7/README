@@ -1,0 +1,18 @@
+nginx-conf holds 2 config files that will be used to create fortune-config configmap 
+
+> kubectl create configmap fortune-config --from-file=nginx-conf
+
+to see it
+> kubectl get configmap fortune-config -o yaml
+
+configmap fortune-config is required in order to create fortune-pod-configmap-volume pod
+> kubectl create -f fortune-pod-configmap-volume.yaml
+
+turn on port forwarding on that pod
+> kubectl port-forward fortune-configmap-volume 8080:80 &
+
+test the gzip config settings on nginx
+> curl -H "Accept-Encoding: gzip" -I localhost:8080
+
+
+
