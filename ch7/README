@@ -14,5 +14,23 @@ turn on port forwarding on that pod
 test the gzip config settings on nginx
 > curl -H "Accept-Encoding: gzip" -I localhost:8080
 
+to see the contents of the mounted configmap volume 
+> kubectl exec fortune-configmap-volume -c web-server ls /etc/nginx/conf.d
+
+to see content of the custom nginx config file
+> kubectl exec fortune-configmap-volume -c web-server more /etc/nginx/conf.d/my-nginx-config.conf
+The nginx conf.d has been mounted with both config files from fortune-config (my-nginx-config.conf and sleep-interval)
+We only want the configmap volume to have my-ngxinx-config.conf
+
+
+fortune-pod-configmap-volume-with-items.yaml defines such a configmap volume by specifying only 1 item
+from fortune-config, the my-nginx-config.conf, mapped as /etc/nginx/conf.d/gzip.conf
+
+> kubectl create -f fortune-pod-configmap-volume-with-items.yaml
+
+to see the single file
+> kubectl exec fortune-configmap-volume-with-item -c web-server ls /etc/nginx/conf.d/
+gzip.conf
+
 
 

@@ -646,6 +646,8 @@ Since you don't really want sleep-interval as a file, and you are going to pass 
 env variable, you really want to populate a configMap volume with only part of the configMap's
 entries:
 
+(see fortune-pod-configmap-volume-with-items.yaml)
+
   ...
   volumes:
   - name: config
@@ -656,10 +658,17 @@ entries:
         path: gzip.conf                 <-----3
 
 1 using items: will select the entries to include in the volume
-2 selects the entry specified bby key
-3 the name of the file you want it to be saved as (gzip.conf)
+2 selects the entry specified by key
+3 the name of the file you want it to be called on the configmap volume (gzip.conf)
 
-Mounting a volume as a directory will hid any files in the original /etc/nginx/conf.d
+> kubectl create -f fortune-pod-configmap-volume-with-items.yaml
+
+to see the single file
+> kubectl exec fortune-configmap-volume-with-item -c web-server ls /etc/nginx/conf.d/
+gzip.conf
+
+
+Mounting a volume as a directory will hide any files in the original /etc/nginx/conf.d
 which is okay if that is what you want, but you can also just mount a file into a directory
 
 ...
