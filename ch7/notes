@@ -181,6 +181,9 @@ There are two ways to create a config map
  both are created using: 
      kubectl create configmap ...
 
+ (ConfigMap keys must be valid DNS subdomain names (alpha-numeric, dashes, underscores + dots. They
+  can start with leading dot)
+
 Simple Values
 -------------
 the simplest way to create a configmap is by using the kubectl create command:
@@ -249,10 +252,16 @@ metadata:
    name: fortune2-config
 
 
+The name of the configmap is what you'll be referencing the config map by.
+
  Then to see the config map content:
  > kubectl get configmap fortune2-config -o yaml
 
 -----------------
+
+ConfigMaps can be used to store coarse-grained config data, such as complete config files.
+The best way to do so is to use the kubectl create command to read in a file from disk
+and store them as individual entries in the config map.
 
  To create config maps with config files:
 
@@ -386,6 +395,20 @@ metadata:
 
 Using the values from a config map
 ----------------------------------
+There are 3 ways to get the values from the map inside a pod's container.
+- 1 or more environment variables
+- use a configmap volume to expose configmap entries as files
+
+(
+- setting an single environment variable with the value of a configmap's key
+- exposing all the entries in a config map as environment variables (kubernetes 1.6)
+- passing configmap values as a command line argument
+- configmap volume to expose configmap entries as files
+)
+
+Exposing configmap entries as environment variables
+---------------------------------------------------
+
 To use the values from the map in your pod container, in your yaml descriptor:
 
 apiVersion: v1
@@ -396,25 +419,29 @@ spec:
    containers:
    - image: haja/fortune:env
      env:
-     - name: INTERVAL
-       valueFrom:
-         configMapKeyRef:
-           name: fortune-config
-           key: sleep-interval
-...
+     - name: INTERVAL              <--------1
+       valueFrom:                  <--------2
+         configMapKeyRef:          <--------2
+           name: fortune-config    <--------3
+           key: sleep-interval     <--------4
+
+1 - the environment variable to populate in the container
+2 - the construct that tells kubernetes the value is coming from a configMap value
+3 - the configmap name
+4 - the key inside the configmap
 
 This will set the environment variable INTERVAL with a value from the config map fortune-config 
 with key "sleep-interval"
 
-
-If the container using the config map is created and the config map is not yet started, when the pod
+(If the container using the config map is created and the config map is not yet started, when the pod
 is created, the container will not start (other containers not referencing the config map will jstart just 
 fine, but the container with the broken config map reference will not start).
 If you then create the missing config map, the failed container will start not requiring the pod be 
 recreated.
 
 Optionally, you can set configMapKeyRef.optional: true, in which case, the container will
-still start even if the config map does not exist
+still start even if the config map does not exist)
+
 
 ConfigMaps are an excellent way of decoupling the configuration from the pod specification, allowing
 you to keep all the configuration options close together instead of having them
@@ -425,23 +452,42 @@ So if the environment variable name is CONFIG_FOO-BAR, this will not work.
 
 Exposing all the environment variables using the envFrom option:
 ----------------------------------------------------------------
-You can expose all keys as environment variabels using the envFrom attribute.
+When your configmap contains many values, setting the individual environment variables 
+using the valueFrom construct is error prone and tedious.
+
+Instead you can expose all the entries of a config map as environment variables
+using the "envFrom" construct.
+
 
 ...
 spec:
   containers:
   - image: some-image
-    envFrom:
-    - prefix: CONFIG_
-      configMapRef:
-         name: my-config-map
+    envFrom:                 <-------1
+    - prefix: CONFIG_        <-------2
+      configMapRef:          <-------3
+         name: my-config-map <-------4
+
+1 - the construct that tells kubernetes to expose all the keys from the configmap as env variables
+2 - the prefix to prepend to all the env variables -- this construct is optional
+3 - the kubernetes construct that tells the config map reference
+4 - config map to expose
 
 This spec will expose all the values from my-config-map as environment variables, prefixed with: CONFIG_
 The prefix is optional, if it is not specfied, it will just export the keys from the configMap with no
 prefix.
 
+So if this configmap my-config-map has 3 keys (FOO, BAR, FOO-BAR), then the 
+resulting environment variables will bbe CONFIG_FOO, CONFIG_BAR.
+FOO-BAR is not a valid env variable name, so it will not be created (see above section)
+
+
 Passing a configMap entry as a command line argument
 ----------------------------------------------------
+From the above section, we know how to expose a configmap value as a env variable.
+Once we have the value as a env variable, we are able to reference it and pass it
+as command line arguments to processes in the container
+
 To pass the value from a configMap as an argument to the main process running in the container:
 
 apiVersion: v1
@@ -451,13 +497,20 @@ metadata:
 spec:
   containers:
   - image: haja/fortune:args
-    env:
-    - name: INTERVAL
-      valueFrom:
-        configMapKeyRef:
-          name: fortune-config
-          key: sleep-interval
-    args: ["$(INTERVAL)"]
+    env:                            <-----------1
+    - name: INTERVAL                <-----------2
+      valueFrom:                    <-----------3
+        configMapKeyRef:            <-----------3
+          name: fortune-config      <-----------4
+          key: sleep-interval       <-----------5
+    args: ["$(INTERVAL)"]           <-----------6
+
+1 - the kubernetes construct that says to map a configmap key to env variable
+2 - the env variable name
+3 - the kubernetes construct that says the value is coming from a config map key single value
+4 - the configmap name
+5 - the config map key
+6 - re-using the env variable as a command line argument to the container
 
 env: -name: INTERVAL will define an environment variable INTERVAL
 args: ["$(INTERVAL)"] will use the defiend env variable as argument to the container process
@@ -466,14 +519,17 @@ args: ["$(INTERVAL)"] will use the defiend env variable as argument to the conta
 ConfigMap volume to expose ConfigMap entries as files
 -----------------------------------------------------
 ConfigMap can also contain whole config files.
-You can then expose those to the container using a special volume, a configMap volume.
+You can then expose the whole file to the container using a special volume, a configMap volume.
 
 -configMap volume will expose each entry of the configMap as a file, the process running
 in the container can obtain the entry's value by reading the contents of the file
 
 -this is the ideal way to pass large config files to the container
 
-first create a directory nginx-conf for holding all your config files, 
+In this example, we will configure an nginx app server to compress responses it sends to clients.
+Nginx reads its configurations in from a config file.
+
+first create a directory "nginx-conf" for holding all your config files, 
 in nginx-conf will be 2 files, my-nginx-config.conf and sleep-interval
 
  my-nginx-config.conf will be:
@@ -490,6 +546,9 @@ server {
     index  index.html index.htm;
   }
 }
+
+In the above nginx config settings, the gzip tells to turn on gzip in responses, 
+and the type of mime to set the response as.
 
 sleep-interval will be:
 
@@ -517,6 +576,12 @@ metadata:
   resourceVersion: "584004"
   selfLink: /api/v1/namespaces/default/configmaps/fortune-config
   uid: 2975392f-1787-11e9-9d69-080027551fc7
+
+
+You should see the two entries, the first holds the content of my-nginx-config.conf
+and the 2nd holds the contents of sleep-interval
+ 
+The | char after the colon means that a literal multi-line value follows.
  
 
 To create a volume populated with teh contents of a ConfigMap:
@@ -524,7 +589,7 @@ To create a volume populated with teh contents of a ConfigMap:
 -mount the volume in a container
 -initialize the volume with files created from a configMap entry
 
-
+(the following is condensed of fortune-pod-configmap-volume.yaml in git)
 apiVersion: v1
 kind: Pod
 metadata:
@@ -548,6 +613,30 @@ spec:
 
 This spec 2) defines a volume named config that is a configMap named fortune-config
 and 1) references 2), mounting it at mountPath /etc/nginx/conf.d so that nginx automatically uses it
+
+To create the pod with the specified containers:
+> kubectl create -f fortune-pod-configmap-volume.yaml
+
+this creates a pod called fortune-configmap-volume.
+
+To set port forwarding on this pod:
+> kubectl port-forward fortune-configmap-volume 8080:80 &
+
+Then to hit the container with the gzip header:
+> curl -H "Accept-Encoding: gzip" -I localhost:8080
+
+You should see the response:
+HTTP/1.1 200 OK
+Server: nginx/1.15.8
+Date: Tue, 15 Jan 2019 05:24:55 GMT
+Content-Type: text/html
+Last-Modified: Tue, 15 Jan 2019 05:24:54 GMT
+Connection: keep-alive
+ETag: W/"5c3d6ea6-36"
+Content-Encoding: gzip
+
+In the response header we see the content has been encoded with gzip, so we know nginx
+used the configurations we specified in the config map which we exposed in the configmap volume.
 
 After running the container, if you look in /etc/ngxin/conf.d you should see
 my-nginx-config.conf
