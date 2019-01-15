@@ -646,7 +646,7 @@ Since you don't really want sleep-interval as a file, and you are going to pass 
 env variable, you really want to populate a configMap volume with only part of the configMap's
 entries:
 
-(see fortune-pod-configmap-volume-with-items.yaml)
+(see fortune-pod-configmap-volume-with-item.yaml)
 
   ...
   volumes:
@@ -668,9 +668,13 @@ to see the single file
 gzip.conf
 
 
+
 Mounting a volume as a directory will hide any files in the original /etc/nginx/conf.d
 which is okay if that is what you want, but you can also just mount a file into a directory
 
+(fortune-pod-configmap-volume-with-item-subpath.yaml)
+
+> kubectl create -f fortune-pod-configmap-volume-with-item-subpath.yaml
 ...
 spec:
   containers:
@@ -680,8 +684,13 @@ spec:
       mountPath: /etc/someconfig.conf   <-----1
       subPath: myconfig.conf            <-----2
 
-1 This specifies you are mounting a file
-2 you are only mounting the myconfig.conf entry (part of the volume)
+1 This is the file name you want to be your configmap volume file to be mounted as.
+2 This is the entry on the configMap you want to mount 
+
+So in your configMap myvolume, there will be a key called myconfig.conf, the contents of that
+file will be mounted as a file /etc/someconfig.conf on your /etc directory, without hiding any other files
+
+
 
 By default, all files in a configMap volume are 644 (-rw-r-r--).
 To change that:
@@ -695,6 +704,8 @@ volumes:
 
 1 will change the files to -rw-rw----
 
+To see the file modes
+> kubectl exec fortune-configmap-volume-default-mode -c web-server -- ls -l /etc/nginx/conf.d
 
 Updating App config without restarting
 --------------------------------------
@@ -706,6 +717,18 @@ recreate the pod or even restart the container
 -when you update a configmap, all the files in the volume referencing it are updated,
  the process then needs to detect they've been changed and reload them
 
+> kubectl edit configmap fortune-config
+
+After a while, the configmap is updated, as well as the file in the configmap volume.
+You can confirm this on the file
+> kubectl exec fortune-configmap-volume -c web-server cat /etc/nginx/conf.d/my-nginx-config.conf
+
+Now ngxin needs to be reloaded from the config file
+ > kubectl exec fortune-configmap-volume -c web-server -- nginx -s reload
+
+
+
+configmap volume files are softlinks
 
 Secrets
 --------
@@ -713,7 +736,143 @@ secrets are like config maps except that they hold secret information
 -secrets can be passed to the container as environment variable or 
 - expose secret entries as files in a volume
 
-secrets are only distributed to nodes that runt he pods that need access to the Secret volume
+secrets are only distributed to nodes that run the pods that need access to the Secret volume
 -secrets are stored in memory, preventing the need to wipe the disk after 
 
 
+Secrets are kubernetes resources, so you can list them using:
+> kubectl get secrets
+NAME                  TYPE                                  DATA      AGE
+default-token-rwmk9   kubernetes.io/service-account-token   3         106d
+tls-secret            kubernetes.io/tls                     2         83d
+
+You can get detailed information on a secret by:
+> kubectl describe secrets
+
+Name:         default-token-rwmk9
+Namespace:    default
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name=default
+              kubernetes.io/service-account.uid=af0379f7-c526-11e8-80cb-080027551fc7
+
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     1066 bytes
+namespace:  7 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImRlZmF1bHQtdG9rZW4tcndtazkiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGVmYXVsdCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImFmMDM3OWY3LWM1MjYtMTFlOC04MGNiLTA4MDAyNzU1MWZjNyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZWZhdWx0OmRlZmF1bHQifQ.ayXitGfLE9Fje-EAvrJKXdfGTz_TT_gpPe7Sy5oeosYQI-vEQLybtgUAZ_YfGa0xh04Eb4OVoEdFCqKsBjhyq5J7aOY5N4z7cqknLlU5cczL5i2y1C4tc4BKEDlZrnE3nOpCmXAnTQXU_D0mbD_QbJR_wotq3y2xqg6zHnioCYP2QA__q5qasg1cXruGVUQXNjVOXWdaDhY4BCdG_OYEZeCp2p6bSAOVzuAV48GvEKE_w1JCtIXBYmTtuQadVblfAEuYDA3DZ26r5aOoi917tCmL16o3naoNZSRlSFlkTf-1j8-DDpXjWTxLNks-xfWJPzU4UryWSum21bHEx6lCBQ
+
+
+Name:         tls-secret
+Namespace:    default
+Labels:       <none>
+Annotations:  <none>
+
+Type:  kubernetes.io/tls
+
+Data
+====
+tls.crt:  997 bytes
+tls.key:  1679 bytes
+
+
+Every container is mounted the default-token secret
+
+You can see where the default secret token is mounted by 
+> kubectl describe pods
+...
+    Mounts:
+      /usr/share/nginx/html from html (ro)
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-rwmk9 (ro)
+
+...
+
+  So the secrets volume is mounted at /var/run/secrets/kubernetes.io/serviceaccount
+
+Since secrets are just configmap volumes, we can ls that on our pods
+> kubectl exec mypod -- ls /var/run/secrets/kubernetes.io/serviceaccount/
+ca.crt
+namespace
+token
+
+Creating Secrets
+----------------
+secrets are just configmap base64 encoded
+
+> echo foo > bar
+
+> echo secret1 > ca.cert
+
+> echo secret2 > tls.cert
+
+> kubectl create secret generic fortune-https-secret --from-file=bar --from-file=ca.cert --from-file=tls.cert
+
+
+To see the contents of the config map
+> kubectl get secret fortune-https-secret -o yaml
+apiVersion: v1
+data:
+  foo: YmFyCg==
+  ca.cert: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUN2RENDQWFRQ0NRQ0hxZCtRbHhtcEdEQU5CZ2txaGtpRzl3MEJBUXNGQURBZ01SNHdIQVlEVlFRRERCVjMKZDNjdWEzVmlhV0V0WlhoaGJYQnNaUzVqYjIwd0hoY05NVGt3TVRFMU1EY3lNREkwV2hjTk1qa3dNVEV5TURjeQpNREkwV2pBZ01SNHdIQVlEVlFRRERCVjNkM2N1YTNWaWFXRXRaWGhoYlhCc1pTNWpiMjB3Z2dFaU1BMEdDU3FHClNJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURWVXRLOGp0alBGK3FBNTFmeG9NRFBKV0oxTFlCL05kM3QKM0RmU21DOWFaOHl3aElUZkZVQTJ0aFpSRWROYmVkV0hOUEtGVTNWaUpoMmhqVDV1ZFFOUzh0NEZMMkM5cVpTUwpCcnJ0TWZORURzclgyUC9pUVRtNTNXcmZwN0IrQ25nSTFLVTIyLzdEMEVIcTJNV09oM1dlbGRTNTBKYlBrRDJCCnA5ZnpaSzdyNU8zRzAzT1BMcXN2bDJSYSs5cG8rbHd1R0xldW5iVm0zVjlCaXp2SE45ZzFWSnl2c0JLOUpZZysKUWYwZzRveG9CTWJZalRlbU1ydERpUXBXYUx0L2txTi90andsSkdITHBhZTExdWlOSVovY01xZm5NY21JVEhtUgpFY3p1ZHd4eEttUE9SV0lmemVUemx2TEt6TS80U05QUDRQSHNsckNkUU5lVC9SbnFYVXE5QWdNQkFBRXdEUVlKCktvWklodmNOQVFFTEJRQURnZ0VCQUdQbXBnOUxpMVJRSVBqNW8wbXpIV2E5bUYzRTlWbzVHUEk4TDFibmRqTTEKOWMzTVE0NzcyZzFXSlNvOGpXdTVpclJyVGQxWi9hSXdMWTE4b0RnTUV2c2QrWklZYVVmL0tCK2ZzK2FXYXU4QwpZZENUTTlrQ2lGTmFFV09aaVZZVmNQNVgwZkN3SDhsQzdpb1lTcVo2b2phSTlhYXovb2dCTVhxMEI3WjVuUUlHCmdpU2hWb0ZObkV3OEp5WTVFY2gyOElpN0hHYUV6NzRKUHJJR2JQblZVUnZYaTVvQ21xUHIzTkZ2ZjZvRStrdzEKWGErcXVRSUpMbXIyT2w1MHQ4QmNkcjdSVVVRMFQ5bmYreHVCemJtN2h1RmtNRXBqamF1YlN5KzFvRjJWTWtOYgpjZ3lhd0xuKzE0aGw5NHJHSUJDMWt1ZTl5ZCtmMUE0UWRYWFFOUVZPbVlFPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.cert: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBMVZMU3ZJN1l6eGZxZ09kWDhhREF6eVZpZFMyQWZ6WGQ3ZHczMHBndldtZk1zSVNFCjN4VkFOcllXVVJIVFczblZoelR5aFZOMVlpWWRvWTArYm5VRFV2TGVCUzlndmFtVWtnYTY3VEh6UkE3SzE5ai8KNGtFNXVkMXEzNmV3ZmdwNENOU2xOdHYrdzlCQjZ0akZqb2QxbnBYVXVkQ1d6NUE5Z2FmWDgyU3U2K1R0eHROegpqeTZyTDVka1d2dmFhUHBjTGhpM3JwMjFadDFmUVlzN3h6ZllOVlNjcjdBU3ZTV0lQa0g5SU9LTWFBVEcySTAzCnBqSzdRNGtLVm1pN2Y1S2pmN1k4SlNSaHk2V250ZGJvalNHZjNES241ekhKaUV4NWtSSE03bmNNY1NwanprVmkKSDgzazg1Ynl5c3pQK0VqVHorRHg3SmF3blVEWGsvMFo2bDFLdlFJREFRQUJBb0lCQUFxZUtyc1Q2UnExdUFoZQplM1FkYWp0bFF2ZE9JbjB5Y3k5cHJLV2d5WXFZYkFuRkxzL2p3T1I0UDdnZFNRWGVsSkE4UkczNmIzZEpLbVJtCklWdGlHNTQvVkdteHFBRUl0Y3BtNTFyekI0YTFyY2I4bUEvczZ6Q2pJclNySmcrLythV0c0QXBRL09kR01HRysKRkdjNXV0TC81aXl4Z3pBbG44b2FUcGRneFl3Y0s2VUdobUFMZEgzVHpvVzV4cE9ldGlONSthdWJHdlBVek1pbQpCTWpMWTl6SU5oRzdwOEptbkxpZjc4UDUwYjM5M3Q1cnBPMHFxSVl2S3VwSHlWN0d1TEdZMkhJdHpUVkxCSEFMCmxXQmdSOFo4bDRoL3o1bjRTY0FhZXJCeThVTE9pR3lBbHl5VUFZbzl4OVViZTBEdHJqUWhlNEdRRGFMVExOSGQKVFNKNEprRUNnWUVBOXdVQVh3T3hrSE9Vc1djYytvYzBnUzR3eHJ3djZ3RFQyVUdMK3lXR1hMU2hyOW4xTWVrUQpjcTFmOW00UUhqSzd6Y1hUTFEwUk9YT2M2VHhXV0kyaWh4L2txRGFvQjlsRUF1eEdCdmFMNnVOMTluM3cwcXZ5CjAxOW1QSXFmdkdaVjEvbFk2MGZkakFPMWg4K29DRFhXT2RUMkpiRXdGWnc3eUJlTENiNG1EZVVDZ1lFQTNSUTIKOUFKNkZJTXJBcEZHNmlHMkJZVlA2anNLUEI3TUdxN3hmQTRqWWcvVzlYalUrU2NWbjcvclFaQ2pOVDgwTDlRMwpnTGwvUEY3SGVMcHR3NVpzZHNIMFF5eWZQb3pQc1dyckJXREdXakJ0dmJtckQ0VS9KU1NmNHdqVmM3RVE0UHFyCjBwS2dtbDZYQTNtMDF4di9kalZVbmRqZGZId3JPcm1tYUxjdU8va0NnWUEvbkxVY3dzbStSbFY3WGU5emdNLy8KbUZLTlN6Y1gwSzI5bkFpZFUydUhnaWpGTFY3Y1RJV2swb3NNM2drZWpiZ1paS0ZlVDZnbzRHSC9Hait1TEVNMwpndm9TYTRqWUJKWmtIazVtU3FWN2hyb0JFU3VzUlFXU2MxWFRyMnMxVERFOUhnUk5Dc085NDlLaXQ5SXcweFJvCjdqTzVQeWovMTZ6NWVUNmY4cXpBRlFLQmdRREdFQWd6ajh5RGVBZ2VZcjBmb1ZnTGxpWEVlV1J2L0Q5cllIUWsKYWg0MUNtL1F0NUpHTFVmb09PNnhiTDFyUk5haVN3UDJwVGxpZ3A4K2YvYzZsUmRUUmV4cUNoNFkwZHA0M29yego1SUdQNTNkSjFIOTJoaS9PUFFPcFNRN0NlVTNmNFhQeVVUN2xUZjBKTmc1WDhWTnJPZGczR2tWRDg1SmZLRmYzCjFMVHRNUUtCZ0htdGc3aVd1eFpOVnkwb1hDNHZYM1E4SGl4Q2xvWllIeS9uMWZVaUI2TGRET2JQd25EYnphcGEKSGVqTEQ3TGhscFl3eHVucVo1aStkcDExVG1iRkFiQkFkRmRhZERhWnMxSjQ5Um1UcU5CNUExM0ludTA5dkJmRgppbSs3WVp5OXFocXVZV0k1WnFnT0d2eU1RanBjbkE2SGJqakxXemFYVDlCSlVOU3Z3TGZwCi0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
+kind: Secret
+metadata:
+  creationTimestamp: 2019-01-15T07:21:09Z
+  name: fortune-https-secret
+  namespace: default
+  resourceVersion: "632583"
+  selfLink: /api/v1/namespaces/default/secrets/fortune-https-secret
+  uid: 212e26cb-1896-11e9-9d69-080027551fc7
+type: Opaque
+
+
+Why are secrets base64 encoded?
+Secrets can be binary, which base64 will convert binary values into plain-text.
+
+Secrets are limited to 1 MB.
+
+When data is exposed as a secret volume, the value of the secret is decoded and written to the file
+in its actual form (not base64 encoded).
+So you app will use it as is.
+
+
+To use a secret volume, in your pod spec:
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fortune-https
+spec:
+  containers:
+    - image: haja/fortune:env
+      name: html-generator
+      volumeMounts:
+      - name: html
+        mountPath: /var/htdocs
+    - image: nginx:alpine
+      name: web-server
+      volumeMounts:
+      - name: html
+        mountPath: /usr/share/nginx/html
+        readOnly: true
+      - name: config
+        mountPath: /etc/nginx/conf.d
+        readOnly: true
+      - name: certs
+        mountPath: /etc/nginx/certs/
+        readOnly: true
+      ports: 
+      - containerPort: 80
+      - containerPort: 443
+    volumes:
+    - name: html
+      emptyDir: {}
+    - name: config
+      configMap:
+        name: fortune-config
+        items:
+        - key: my-nginx-config.conf
+          path: https.conf
+    - name: certs
+      secrets:
+        secretName: fortune-https-secret 

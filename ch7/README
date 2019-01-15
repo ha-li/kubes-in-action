@@ -33,4 +33,31 @@ to see the single file
 gzip.conf
 
 
+By default, mounting a directory will hide all the origin files, so you only want to add 1 file
+to the origin directory, 
+
+see the file fortune-pod-configmap-volume-with-item-subpath.yaml
+> kubectl create -f fortune-pod-configmap-volume-with-item-subpath.yaml
+
+will add the my-nginx-config.conf entry from configmap fortune-config as /etc/nginx/conf.d/gzip.conf,
+without hiding any of the original nginx config files (default.conf)
+
+> kubectl exec fortune-configmap-volume-with-subpath -c web-server ls /etc/nginx/conf.d
+default.conf
+gzip.conf
+
+> kubectl exec fortune-configmap-volume-with-subpath -c web-server more /etc/nginx/conf.d/gzip.conf
+server {
+  listen       80;
+  server_name  www.kubia-example.com;
+
+  gzip on;
+  gzip_types text/plain application/xml; 
+ 
+  location / {
+    root   /usr/share/nginx/html;
+    index  index.html index.htm;
+  }
+}
+
 
