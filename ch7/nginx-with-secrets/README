@@ -1,0 +1,14 @@
+in this directory you can create a simple kubernetes pod with nginx:latest
+and mount a secrets volume on it
+
+1. create the secrets volume using contents from the director ../secrets
+> kubectl create secret generic <secret-vol-name> --from-file ...
+> kubectl create secret generic secret-nginx --from-file=foo --from-file=https.certs
+
+2. then create the pod which uses that secret volume. the pod is defined in nginx-boom.yaml
+> kubectl create -f nginx-boom.yaml
+
+3. verify that the pod has the secrets volume mounted at the mount path
+> kubectl exec <pod> -- <commands>
+> kubectl exec nginx-boom-with-secrets -- ls -l /usr/my/secrets
+ 
