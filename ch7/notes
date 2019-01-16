@@ -800,22 +800,21 @@ Creating Secrets
 ----------------
 secrets are just configmap base64 encoded
 
+To create secrets, first we need to create a special configmap called secrets
+
 > echo foo > bar
-
 > echo secret1 > ca.cert
-
 > echo secret2 > tls.cert
-
 > kubectl create secret generic fortune-https-secret --from-file=bar --from-file=ca.cert --from-file=tls.cert
 
 
-To see the contents of the config map
+To see the contents of the secrets config map
 > kubectl get secret fortune-https-secret -o yaml
 apiVersion: v1
 data:
   foo: YmFyCg==
-  ca.cert: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUN2RENDQWFRQ0NRQ0hxZCtRbHhtcEdEQU5CZ2txaGtpRzl3MEJBUXNGQURBZ01SNHdIQVlEVlFRRERCVjMKZDNjdWEzVmlhV0V0WlhoaGJYQnNaUzVqYjIwd0hoY05NVGt3TVRFMU1EY3lNREkwV2hjTk1qa3dNVEV5TURjeQpNREkwV2pBZ01SNHdIQVlEVlFRRERCVjNkM2N1YTNWaWFXRXRaWGhoYlhCc1pTNWpiMjB3Z2dFaU1BMEdDU3FHClNJYjNEUUVCQVFVQUE0SUJEd0F3Z2dFS0FvSUJBUURWVXRLOGp0alBGK3FBNTFmeG9NRFBKV0oxTFlCL05kM3QKM0RmU21DOWFaOHl3aElUZkZVQTJ0aFpSRWROYmVkV0hOUEtGVTNWaUpoMmhqVDV1ZFFOUzh0NEZMMkM5cVpTUwpCcnJ0TWZORURzclgyUC9pUVRtNTNXcmZwN0IrQ25nSTFLVTIyLzdEMEVIcTJNV09oM1dlbGRTNTBKYlBrRDJCCnA5ZnpaSzdyNU8zRzAzT1BMcXN2bDJSYSs5cG8rbHd1R0xldW5iVm0zVjlCaXp2SE45ZzFWSnl2c0JLOUpZZysKUWYwZzRveG9CTWJZalRlbU1ydERpUXBXYUx0L2txTi90andsSkdITHBhZTExdWlOSVovY01xZm5NY21JVEhtUgpFY3p1ZHd4eEttUE9SV0lmemVUemx2TEt6TS80U05QUDRQSHNsckNkUU5lVC9SbnFYVXE5QWdNQkFBRXdEUVlKCktvWklodmNOQVFFTEJRQURnZ0VCQUdQbXBnOUxpMVJRSVBqNW8wbXpIV2E5bUYzRTlWbzVHUEk4TDFibmRqTTEKOWMzTVE0NzcyZzFXSlNvOGpXdTVpclJyVGQxWi9hSXdMWTE4b0RnTUV2c2QrWklZYVVmL0tCK2ZzK2FXYXU4QwpZZENUTTlrQ2lGTmFFV09aaVZZVmNQNVgwZkN3SDhsQzdpb1lTcVo2b2phSTlhYXovb2dCTVhxMEI3WjVuUUlHCmdpU2hWb0ZObkV3OEp5WTVFY2gyOElpN0hHYUV6NzRKUHJJR2JQblZVUnZYaTVvQ21xUHIzTkZ2ZjZvRStrdzEKWGErcXVRSUpMbXIyT2w1MHQ4QmNkcjdSVVVRMFQ5bmYreHVCemJtN2h1RmtNRXBqamF1YlN5KzFvRjJWTWtOYgpjZ3lhd0xuKzE0aGw5NHJHSUJDMWt1ZTl5ZCtmMUE0UWRYWFFOUVZPbVlFPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
-  tls.cert: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVBMVZMU3ZJN1l6eGZxZ09kWDhhREF6eVZpZFMyQWZ6WGQ3ZHczMHBndldtZk1zSVNFCjN4VkFOcllXVVJIVFczblZoelR5aFZOMVlpWWRvWTArYm5VRFV2TGVCUzlndmFtVWtnYTY3VEh6UkE3SzE5ai8KNGtFNXVkMXEzNmV3ZmdwNENOU2xOdHYrdzlCQjZ0akZqb2QxbnBYVXVkQ1d6NUE5Z2FmWDgyU3U2K1R0eHROegpqeTZyTDVka1d2dmFhUHBjTGhpM3JwMjFadDFmUVlzN3h6ZllOVlNjcjdBU3ZTV0lQa0g5SU9LTWFBVEcySTAzCnBqSzdRNGtLVm1pN2Y1S2pmN1k4SlNSaHk2V250ZGJvalNHZjNES241ekhKaUV4NWtSSE03bmNNY1NwanprVmkKSDgzazg1Ynl5c3pQK0VqVHorRHg3SmF3blVEWGsvMFo2bDFLdlFJREFRQUJBb0lCQUFxZUtyc1Q2UnExdUFoZQplM1FkYWp0bFF2ZE9JbjB5Y3k5cHJLV2d5WXFZYkFuRkxzL2p3T1I0UDdnZFNRWGVsSkE4UkczNmIzZEpLbVJtCklWdGlHNTQvVkdteHFBRUl0Y3BtNTFyekI0YTFyY2I4bUEvczZ6Q2pJclNySmcrLythV0c0QXBRL09kR01HRysKRkdjNXV0TC81aXl4Z3pBbG44b2FUcGRneFl3Y0s2VUdobUFMZEgzVHpvVzV4cE9ldGlONSthdWJHdlBVek1pbQpCTWpMWTl6SU5oRzdwOEptbkxpZjc4UDUwYjM5M3Q1cnBPMHFxSVl2S3VwSHlWN0d1TEdZMkhJdHpUVkxCSEFMCmxXQmdSOFo4bDRoL3o1bjRTY0FhZXJCeThVTE9pR3lBbHl5VUFZbzl4OVViZTBEdHJqUWhlNEdRRGFMVExOSGQKVFNKNEprRUNnWUVBOXdVQVh3T3hrSE9Vc1djYytvYzBnUzR3eHJ3djZ3RFQyVUdMK3lXR1hMU2hyOW4xTWVrUQpjcTFmOW00UUhqSzd6Y1hUTFEwUk9YT2M2VHhXV0kyaWh4L2txRGFvQjlsRUF1eEdCdmFMNnVOMTluM3cwcXZ5CjAxOW1QSXFmdkdaVjEvbFk2MGZkakFPMWg4K29DRFhXT2RUMkpiRXdGWnc3eUJlTENiNG1EZVVDZ1lFQTNSUTIKOUFKNkZJTXJBcEZHNmlHMkJZVlA2anNLUEI3TUdxN3hmQTRqWWcvVzlYalUrU2NWbjcvclFaQ2pOVDgwTDlRMwpnTGwvUEY3SGVMcHR3NVpzZHNIMFF5eWZQb3pQc1dyckJXREdXakJ0dmJtckQ0VS9KU1NmNHdqVmM3RVE0UHFyCjBwS2dtbDZYQTNtMDF4di9kalZVbmRqZGZId3JPcm1tYUxjdU8va0NnWUEvbkxVY3dzbStSbFY3WGU5emdNLy8KbUZLTlN6Y1gwSzI5bkFpZFUydUhnaWpGTFY3Y1RJV2swb3NNM2drZWpiZ1paS0ZlVDZnbzRHSC9Hait1TEVNMwpndm9TYTRqWUJKWmtIazVtU3FWN2hyb0JFU3VzUlFXU2MxWFRyMnMxVERFOUhnUk5Dc085NDlLaXQ5SXcweFJvCjdqTzVQeWovMTZ6NWVUNmY4cXpBRlFLQmdRREdFQWd6ajh5RGVBZ2VZcjBmb1ZnTGxpWEVlV1J2L0Q5cllIUWsKYWg0MUNtL1F0NUpHTFVmb09PNnhiTDFyUk5haVN3UDJwVGxpZ3A4K2YvYzZsUmRUUmV4cUNoNFkwZHA0M29yego1SUdQNTNkSjFIOTJoaS9PUFFPcFNRN0NlVTNmNFhQeVVUN2xUZjBKTmc1WDhWTnJPZGczR2tWRDg1SmZLRmYzCjFMVHRNUUtCZ0htdGc3aVd1eFpOVnkwb1hDNHZYM1E4SGl4Q2xvWllIeS9uMWZVaUI2TGRET2JQd25EYnphcGEKSGVqTEQ3TGhscFl3eHVucVo1aStkcDExVG1iRkFiQkFkRmRhZERhWnMxSjQ5Um1UcU5CNUExM0ludTA5dkJmRgppbSs3WVp5OXFocXVZV0k1WnFnT0d2eU1RanBjbkE2SGJqakxXemFYVDlCSlVOU3Z3TGZwCi0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0tCg==
+  ca.cert: LASDFiadfhwuejasf ... 
+  tls.cert: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRV ... 
 kind: Secret
 metadata:
   creationTimestamp: 2019-01-15T07:21:09Z
@@ -827,17 +826,25 @@ metadata:
 type: Opaque
 
 
+When viewing secret config maps, they will be base64 encoded. 
 Why are secrets base64 encoded?
 Secrets can be binary, which base64 will convert binary values into plain-text.
 
+But when you view the contents of the file mounted on the volume, they are 
+the same as the original (not base64 encoded)
+
+Here is the contents of foo, which in the config map, was encoded, but in the volume mount:
+> kubectl exec nginx-boom-with-secrets -- more /usr/my/secrets/foo
+bar
+
+It is not encoded, which means your application can use the secret files as they are (no decoding
+necessary, which should make sense)
+
 Secrets are limited to 1 MB.
-
-When data is exposed as a secret volume, the value of the secret is decoded and written to the file
-in its actual form (not base64 encoded).
-So you app will use it as is.
-
+-------------------
 
 To use a secret volume, in your pod spec:
+
 apiVersion: v1
 kind: Pod
 metadata:
@@ -876,3 +883,63 @@ spec:
     - name: certs
       secrets:
         secretName: fortune-https-secret 
+
+Here we have declared a secret volume (certs) that gets its contents from the secrets configmap fortune-https-secret.
+The secret volume handle certs is used as the alias that gets referenced in the volume mounts,
+which also configures that secret volumes mount point, as well as its readOnly properties.
+
+Other ways to create a secret
+-----------------------------
+Keep in mind that a secret configmap is a resource, so we should be able to declare it like any other resource:
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ninja-secret
+stringData:
+  ninja: i am a ninja
+data:
+  tls.cert: LsOtlja2VisLtlyJyaHFURSLKtka18nbjax...
+
+If the tls.cert is a valid base64 encoded string, then we can create this like any other resource
+> kubectl create -f ninja-secrets.yaml
+
+We can view the secret resources
+> kubectl get secrets
+NAME                  TYPE                                  DATA      AGE
+default-token-rwmk9   kubernetes.io/service-account-token   3         107d
+fortune-https         Opaque                                4         22h
+secret-nginx          Opaque                                2         1h
+tls-secret            kubernetes.io/tls                     2         84d
+ninja-secret          Opaque                                2         4s
+
+We can get the contents of the secrets
+> kubectl get secrets ninja-secret -o yaml
+apiVersion: v1
+data:
+  https.cert: MIICvDCCAaQCCQCHqd+QlxmpGDANBgkqhkiG9w0BAQsFADAgMR4wHAYDVQQDDBV3d3cua3ViaWEtZXhhbXBsZS5jb20wHhcNMTkwMTE1MDcyMDI0WhcNMjkwMTEyMDcyMDI0WjAgMR4wHAYDVQQDDBV3d3cua3ViaWEtZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDVUtK8jtjPF+qA51fxoMDPJWJ1LYB/Nd3t3DfSmC9aZ8ywhITfFUA2thZREdNbedWHNPKFU3ViJh2hjT5udQNS8t4FL2C9qZSSBrrtMfNEDsrX2P/iQTm53Wrfp7B+CngI1KU22/7D0EHq2MWOh3WeldS50JbPkD2Bp9fzZK7r5O3G03OPLqsvl2Ra+9po+lwuGLeunbVm3V9BizvHN9g1VJyvsBK9JYg+Qf0g4oxoBMbYjTemMrtDiQpWaLt/kqN/tjwlJGHLpae11uiNIZ/cMqfnMcmITHmREczudwxxKmPORWIfzeTzlvLKzM/4SNPP4PHslrCdQNeT/RnqXUq9AgMBAAEwDQYJKoZIhvcNAQELBQADggEBAGPmpg9Li1RQIPj5o0mzHWa9mF3E9Vo5GPI8L1bndjM19c3MQ4772g1WJSo8jWu5irRrTd1Z/aIwLY18oDgMEvsd+ZIYaUf/KB+fs+aWau8CYdCTM9kCiFNaEWOZiVYVcP5X0fCwH8lC7ioYSqZ6ojaI9aaz/ogBMXq0B7Z5nQIGgiShVoFNnEw8JyY5Ech28Ii7HGaEz74JPrIGbPnVURvXi5oCmqPr3NFvf6oE+kw1Xa+quQIJLmr2Ol50t8Bcdr7RUUQ0T9nf+xuBzbm7huFkMEpjjaubSy+1oF2VMkNbcgyawLn+14hl94rGIBC1kue9yd+f1A4QdXXQNQVOmYE=
+  ninja: bmluamFQYXNzd29yZA==
+kind: Secret
+metadata:
+  creationTimestamp: 2019-01-16T06:13:44Z
+  name: ninja-secret
+  namespace: default
+  resourceVersion: "646733"
+  selfLink: /api/v1/namespaces/default/secrets/ninja-secret
+  uid: e109feb0-1955-11e9-9d69-080027551fc7
+type: Opaque
+
+
+Note that both the stringData and the certs are base64 encoded even though the spec is not.
+Thats because the secrets config map will always return it base64 encoded.
+
+
+Secret volumes are always mounted as in memory, so that you do not have to worry about deleting 
+the contents, so you should be able to see that:
+> kubectl exec nginx-boom-with-secrets -c web-server -- mount | grep secrets
+tmpfs on /usr/my/secrets type tmpfs (ro,relatime)
+tmpfs on /run/secrets/kubernetes.io/serviceaccount type tmpfs (ro,relatime)
+
+tmpfs is an in memory temporary fs, which confirms that
+
+
