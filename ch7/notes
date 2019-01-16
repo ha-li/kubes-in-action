@@ -1,6 +1,12 @@
 This chapter is about configmap volumes and secret volumes
 
+both configmap and secret volumes are ways to pass in configuration into a kubernetes pod.
+ - configmap volumes are for regular configurations (regular configurations)
+ - secret volumes are for encrypted configurations (pem files)
+
+
 topics of review
+-docker review
 -specifying arguments to pass config options to container using command line arguments 
 -using env variables as a way to config container
 -using configmap volumes
@@ -40,6 +46,8 @@ To see the contents of the file generated on the docker image:
 
 you should see a new file generated every 10 secs (from ch6) and x secs from this chapter 
 
+-----------------------
+Overrideing command and arguments in Kubernets
 
 If you are building a kubernetes pod, you can choose to override the container ENTRYPOINT and
 CMD. To do that, in the spec:
@@ -104,8 +112,13 @@ spec:
 
 to see the kubernetes pod spec for overriding default arguments see contents of fortune-args
 
+----------------------------------------------
+One way to pass configurations into a container is by using environment variables.
+Its not the best way, but it does work and for simple tests, it is good enough
+
+
 Specifying Environment Variables in a Container Definition
-----------------------------------------------------------
+
 you can pass environment variables to a container in the pod spec:
 -there is not an option to define a pod env variable and have all containers in the pod inherit it
 -the environment variable is defined at the container level using the pod spec.
@@ -123,6 +136,10 @@ spec:
       value: "30"
     name: html-generator
 ...
+
+Here we have defined a env variable INTERVAL, set its value to 30, and pass it
+as to the container image haja/fortune:env. So the container when it boots up, 
+will have the env variable defined and initialized
 
 see contents of fortune-env for the kubernetes pod spec and the docker container.
 
@@ -152,10 +169,14 @@ You want to be able to decouple config options that varying in different environ
 from the source code. Your pod descriptor is really source code for your application, so
 you want really want the configurations outside of your pod description.
 
+As mentioned, there are two types of resources for passing in configurations
+- configmaps for clear text configurations
+- secrets for encrypted configurations (pem files, passwords etc)
+
+
 ConfigMaps
 ----------
-ConfigMaps are objects that hold key/value pairs. The values can be short literals
-to full config files
+ConfigMaps are objects that hold key/value pairs. The values can be short literals to full config files
 
 Applications doesn't need to read the config map directly, or even know that it exists.
 The contents of the config map are passed to containers either as environment variables or
@@ -165,35 +186,55 @@ as files in a volume.
 -if the content of the config map is referenced as a file in a volume, then you can treat it as
  so (below)
 
-Having the config in a separate stand-alone obbject like this allows you to keep multiple
+Having the config in a separate stand-alone object like this allows you to keep multiple
 manifests for configMaps with the same name. Pods reference the configMap by name.
 
 
 Creating a ConfigMap
 --------------------
-There are two ways to create a config map
+
+There are several ways to create a config map
  - kubectl create configmap with simple values
+       1) single key-value pair configmap
+       2) multi pair configmap
  - kubectl create configmap from files stored in disk
-       1) with yaml descriptors
-       2) with conf files
-       3)
+       1) with yaml descriptors (spelling out the contents of the configmap)
+       2) with conf files (using the conf file to provide the contents of the configmap)
+       3) using all the files in a directory 
 
  both are created using: 
      kubectl create configmap ...
 
+ the fact that you can create a configmap using kubectl create configmap should tell you
+ that configmaps are just normal kubernetes resources.
+
  (ConfigMap keys must be valid DNS subdomain names (alpha-numeric, dashes, underscores + dots. They
   can start with leading dot)
 
-Simple Values
+Simple Literals
 -------------
 the simplest way to create a configmap is by using the kubectl create command:
+ - a single key value pair configmap
+ - a multi pair configmap
 
  > kubectl create configmap fortune-config-literal --from-literal=sleep-interval=25
 
    this will create a config map called fortune-config that will hold one value:
       sleep-interval : 25
 
-   to see this config map, 
+ 
+ > kubectl create configmap my-configmap-name --from-literal=foo=bar --from-literal=bar=bax --from-literal=one=two
+
+   This will create a configmap named my-configmap-name and it will hold 3 values:
+     foo=bar
+     bar=bax
+     one=two
+
+
+ Creating a simple configmap from a literal key-value pair:
+ > kubectl create configmap fortune-config-literal --from-literal=sleep-interval=25
+
+   to see this config map, use the get configmap command: 
  > kubectl get configmap fortune-config-literal -o yaml
     and you wil get back its yaml descriptor
 
@@ -208,17 +249,18 @@ the simplest way to create a configmap is by using the kubectl create command:
      resourceVersion: "84354"
      selfLInk: /api/v1/namespace/default/configmaps/fortune-config
      uid: 6370a19c-176d-11e9-9d69-080027551fc7
+
+ You can see the single data point. You have a configmap named simple-config-literal 
+
  
-
- You can also create multiple literals at the same time under one config map
-
+ Create a multiple literals config map
  > kubectl create configmap multi-config-literal --from-literal=foo=bar --from-literal=bar=bax --from-literal=one=two
-   this will create a config map called simple-config with 3 values:
+   this will create a config map called multi-config-literal with 3 values:
       foo : bar
       bar : bax
       one : two
 
- you can see the yaml descriptors for these two config maps using kubectl get configmap:
+ you can see the yaml descriptors for this config map using kubectl get configmap:
 
  > kubectl get configmap multi-config-literal -o yaml
 
@@ -236,9 +278,14 @@ the simplest way to create a configmap is by using the kubectl create command:
    selfLink: /api/v1/namespaces/default/configmaps/myconfigmap
    uid: a380b3fe-176d-11e9-9d69-080027551fc7
 
- 
-   
+ You can see the multiple key-value pairs this config map holds 
+
+
+
+Using files to create config maps
+----------------------------------    
  You can also create configmaps using the kubectl create command with a yaml descriptor file
+ 
  > kubectl create -f fortune2-config.yaml
    
    (the only data required in the metadata section is name:)
@@ -251,19 +298,25 @@ kind: ConfigMap
 metadata:
    name: fortune2-config
 
+ This configmap is called fortune2-config.
 
-The name of the configmap is what you'll be referencing the config map by.
-
- Then to see the config map content:
+ To see the config map spec:
  > kubectl get configmap fortune2-config -o yaml
 
 -----------------
+ In the above examples, whether we created the configmap from literal or from a yaml spec,
+ we provided the key-value pair as data.
 
-ConfigMaps can be used to store coarse-grained config data, such as complete config files.
-The best way to do so is to use the kubectl create command to read in a file from disk
-and store them as individual entries in the config map.
+ A more realistic data source is a configuration file that holds our key-value pairs.
+ Or better yet, regardless of whether it is a key-value pair or not, many configuration 
+ files actually hold coarse grained data (not key-value).
 
- To create config maps with config files:
+ We want to be able to use files as source for a configmap, so that the key is the file name,
+ and the value is the content of the file.
+
+ To create config maps with config files we use a special kubectl command for configmap:
+   kubectl create configmap <configmap-name> --from-file=<file-name>
+
 
  > kubectl create configmap test-config --from-file=test.conf
 
@@ -289,13 +342,14 @@ metadata:
   selfLink: /api/v1/namespaces/default/configmaps/test-config
   uid: 8aab002d-1770-11e9-9d69-080027551fc7
 
+ Note that the configmap name is provided in the command, and then the entry key is the file name
+ and the entry value is the content of the file
 
- To create config map from json file:
--------------------------------------
+ We could use a json file as a source:
  > kubectl create configmap test-json-config --from-file=test-json.json
  
  kubernetes will look for test-json.json from the current directory, and store the contents
- of test-json.json into a config map with the file name as the map key
+ of test-json.json into a config map with the file name as the map key  and the value as the file content.
 
  To see the contents of this config map
 
@@ -317,8 +371,9 @@ metadata:
   uid: fa2018ca-1770-11e9-9d69-080027551fc7
 
 
-Adding a custom key
--------------------
+ If you want to define the key rather then use the file name, you can provide it:
+   kubectl create configmap <configmap-name> --from-file=<customkey>=<filename>
+
  > kubectl create configmap my-config --from-file=customekey=my.json
 
  > kubectl get configmap my-config -o yaml
@@ -339,24 +394,26 @@ metadata:
   uid: 81f7c280-177b-11e9-9d69-080027551fc7
 
 
-Using path directory as source of configs
------------------------------------------
-To create a confim map with individual map entry for all files in a specific directory, use
-the --from-file=/path/to/dir
 
-> kubectl create configmap all-config --from-file=.
+ It is possible to use a directory as a source of configuration files.
+ To create a confim map with individual map entry for all files in a specific directory, use
+ the --from-file=/path/to/dir
 
- this will create config maps of all the files in the current directory with the file names
- as the map keys (any files that are valid subdomain names -- including swp files, etc).
+> kubectl create configmap <configmap-name> --from-file=<directory-path>
 
-> kubectl get configmap all-config -o yaml 
+ this will create 1 configmap named configmap-name that holds 
+ all the (configuration) files in the current directory.  The map keys are the the file names
+  and the file content as the entry values.
+
+> kubectl create configmap all-configmap --from-file=.
+> kubectl get configmap all-configmap -o yaml 
   will show all the config maps from all the files in .
 
 Combining options
 -----------------
 You can combine the various options into one command
 
-> kubectl create configmap all-my-config 
+> kubectl create configmap all-my-configmap 
   1  --from-file=foo.json
   2  --from-file=bar=foobar.conf
   3  --from-file=/config-opts/
@@ -368,22 +425,22 @@ You can combine the various options into one command
  4 - is a literal value
 
 eg:
-> kubectl create configmap uni-config --from-file=test.conf --from-file=unikey=test.conf --from-literal=test=dee
+> kubectl create configmap uni-configmap --from-file=test.conf --from-file=unikey=test.conf --from-literal=test=dee
 
-> kubectl get configmap all-my-config -o yaml
+> kubectl get configmap uni-configmap -o yaml
 apiVersion: v1
-data:
-  test: dee
-  test.conf: |+
-    hi: bye
-    no: yes
+data: 
+ test: dee 
+ test.conf: |+ 
+   hi: bye 
+   no: yes 
 
-  unikey: |+
-    hi: bye
-    no: yes
+ unikey: |+ 
+   hi: bye 
+   no: yes 
 
-kind: ConfigMap
-metadata:
+kind: ConfigMap 
+metadata: 
   creationTimestamp: 2019-01-13T22:10:51Z
   name: uni-config
   namespace: default
@@ -391,13 +448,17 @@ metadata:
   selfLink: /api/v1/namespaces/default/configmaps/uni-config
   uid: 16e31d99-1780-11e9-9d69-080027551fc7
 
+--------------
 
+Now that the configmaps have been created, we want to be able to use the 
+data in the configmap as configuration for containers/pod
 
-Using the values from a config map
+Using the values from a config map 
 ----------------------------------
-There are 3 ways to get the values from the map inside a pod's container.
-- 1 or more environment variables
+There are 2 ways to get the values from the map inside a pod's container.
+- using the valeus to set 1 or more environment variables
 - use a configmap volume to expose configmap entries as files
+     (the entry key is the file name, the entry value is the file content)
 
 (
 - setting an single environment variable with the value of a configmap's key
@@ -409,7 +470,8 @@ There are 3 ways to get the values from the map inside a pod's container.
 Exposing configmap entries as environment variables
 ---------------------------------------------------
 
-To use the values from the map in your pod container, in your yaml descriptor:
+To use the values from the configmap in your pod container as an environment variabe, 
+in your yaml descriptor:
 
 apiVersion: v1
 kind: Pod
@@ -426,7 +488,7 @@ spec:
            key: sleep-interval     <--------4
 
 1 - the environment variable to populate in the container
-2 - the construct that tells kubernetes the value is coming from a configMap value
+2 - the 'valueFrom' construct that tells kubernetes the value is coming from a configMap value
 3 - the configmap name
 4 - the key inside the configmap
 
@@ -468,10 +530,10 @@ spec:
       configMapRef:          <-------3
          name: my-config-map <-------4
 
-1 - the construct that tells kubernetes to expose all the keys from the configmap as env variables
+1 - the envFrom construct tells kubernetes to expose all the keys from the configmap as env variables
 2 - the prefix to prepend to all the env variables -- this construct is optional
-3 - the kubernetes construct that tells the config map reference
-4 - config map to expose
+3 - the construct that tells the data is coming from a configmap 
+4 - configmap name
 
 This spec will expose all the values from my-config-map as environment variables, prefixed with: CONFIG_
 The prefix is optional, if it is not specfied, it will just export the keys from the configMap with no
@@ -518,11 +580,14 @@ args: ["$(INTERVAL)"] will use the defiend env variable as argument to the conta
 
 ConfigMap volume to expose ConfigMap entries as files
 -----------------------------------------------------
-ConfigMap can also contain whole config files.
-You can then expose the whole file to the container using a special volume, a configMap volume.
+As we saw, we can construct configmaps where the key is a file name, and the 
+value is the file content. This becomes the way to expose an entire file content.
 
--configMap volume will expose each entry of the configMap as a file, the process running
-in the container can obtain the entry's value by reading the contents of the file
+You use this to construct a configMap volume which turns the entry value into a file.
+The volume is then mounted into the container in a director/file, essentially creating
+a new file(s) in the container on that mounted directory/file.
+
+Your application then reads that file as a normal file.
 
 -this is the ideal way to pass large config files to the container
 
@@ -611,8 +676,13 @@ spec:
       name: fortune-config      <-------2
   ...
 
-This spec 2) defines a volume named config that is a configMap named fortune-config
-and 1) references 2), mounting it at mountPath /etc/nginx/conf.d so that nginx automatically uses it
+This spec 2) defines a config volume named config. The contents of that
+config volume will be coming from a configMap called fortune-config.
+and 1) references the declared configMap volume and mounts it at 
+mountPath /etc/nginx/conf.d so that nginx automatically uses it.
+
+Since the configMap (see above) contains 2 entries, there will be
+2 files in the mount path, my-nginx-config.conf and sleep-interval
 
 To create the pod with the specified containers:
 > kubectl create -f fortune-pod-configmap-volume.yaml
@@ -642,9 +712,10 @@ After running the container, if you look in /etc/ngxin/conf.d you should see
 my-nginx-config.conf
 sleep-interval
 
-Since you don't really want sleep-interval as a file, and you are going to pass it in as a 
-env variable, you really want to populate a configMap volume with only part of the configMap's
-entries:
+
+If you only want a single entry from the map to be in the configmap volume, you 
+can use this construct which specifies which key to expose in the 
+mount, and the file name you want it be called as
 
 (see fortune-pod-configmap-volume-with-item.yaml)
 
@@ -683,6 +754,12 @@ spec:
     - name: myvolume
       mountPath: /etc/someconfig.conf   <-----1
       subPath: myconfig.conf            <-----2
+  ...
+  volumes:
+  - name: config
+    configMap:
+      name: myvolume
+
 
 1 This is the file name you want to be your configmap volume file to be mounted as.
 2 This is the entry on the configMap you want to mount 
