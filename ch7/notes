@@ -504,6 +504,11 @@ recreated.
 Optionally, you can set configMapKeyRef.optional: true, in which case, the container will
 still start even if the config map does not exist)
 
+  ...
+  configMapKeyRef:
+    optional: true
+  ...
+
 
 ConfigMaps are an excellent way of decoupling the configuration from the pod specification, allowing
 you to keep all the configuration options close together instead of having them
@@ -583,6 +588,14 @@ ConfigMap volume to expose ConfigMap entries as files
 As we saw, we can construct configmaps where the key is a file name, and the 
 value is the file content. This becomes the way to expose an entire file content.
 
+ConfigMap volume allows you to
+ - mount an entire configmap as a directory
+ - mount only 1 entry in the configmap as a directory
+ - mount a single file into an existing directory without hiding the other files
+
+
+Mounting an entire config map to a directory
+--------------------------------------------
 You use this to construct a configMap volume which turns the entry value into a file.
 The volume is then mounted into the container in a director/file, essentially creating
 a new file(s) in the container on that mounted directory/file.
@@ -712,7 +725,8 @@ After running the container, if you look in /etc/ngxin/conf.d you should see
 my-nginx-config.conf
 sleep-interval
 
-
+Mounting a single entry in a configmap as a file to a directory
+-----------------------------------------------------
 If you only want a single entry from the map to be in the configmap volume, you 
 can use this construct which specifies which key to expose in the 
 mount, and the file name you want it be called as
@@ -739,7 +753,8 @@ to see the single file
 gzip.conf
 
 
-
+Mounting 1 file into a non-empty directory without hiding existing files
+------------------------------------------------------------------------
 Mounting a volume as a directory will hide any files in the original /etc/nginx/conf.d
 which is okay if that is what you want, but you can also just mount a file into a directory
 
@@ -768,54 +783,66 @@ So in your configMap myvolume, there will be a key called myconfig.conf, the con
 file will be mounted as a file /etc/someconfig.conf on your /etc directory, without hiding any other files
 
 
+Features of ConfigMap
+---------------------
+-when you update a configmap, the mounted configmap volume also changes to reflect the new 
+ content, it is up to your application to reload the new files
+-files in a configmap have a default permission, you can change them
 
-By default, all files in a configMap volume are 644 (-rw-r-r--).
-To change that:
+  Updating configmap/secrets 
+  --------------------------
+    - to update a configmap:
+        > kubectl edit configmap <configmap-name>
+        
+        simply changing the configmap, the changes will be reflected in the volume drive
+        (this also applies to secrets)  
+      
+      files in the volume are created as soft links, so the changes will be atomic
+      
+      but you as the app developer needs to be aware of the changed volume, because
+      new containers/pods or containers that have been restarted will have the changes, 
+      and any old containers not restarted the process will not have read the new configs
 
-...
-volumes:
-- name: config
-  configMap:
-    name: fortune-config
-    defaultMode: "6600"    <-----1
-
-1 will change the files to -rw-rw----
-
-To see the file modes
-> kubectl exec fortune-configmap-volume-default-mode -c web-server -- ls -l /etc/nginx/conf.d
-
-Updating App config without restarting
---------------------------------------
-when you use an environment variable or command line arg, you have to restart the container
-to pick up changes
-
-configmap changes exposed as a volume allows you to update the config without having to 
-recreate the pod or even restart the container
--when you update a configmap, all the files in the volume referencing it are updated,
- the process then needs to detect they've been changed and reload them
-
-> kubectl edit configmap fortune-config
-
-After a while, the configmap is updated, as well as the file in the configmap volume.
-You can confirm this on the file
-> kubectl exec fortune-configmap-volume -c web-server cat /etc/nginx/conf.d/my-nginx-config.conf
-
-Now ngxin needs to be reloaded from the config file
- > kubectl exec fortune-configmap-volume -c web-server -- nginx -s reload
+      so it is best to write your app to reload the configs periodically if you can
+   
+    - if you mount only 1 file instead of the whole volume, this file will not be updated
+      but future kubernetes releases may support updating the file.
 
 
+  Default File Permissions        
+  ------------------------
+  - By default, all files in a configMap volume are 644 (-rw-r-r--).
+    To change that:
 
-configmap volume files are softlinks
+     ...
+     volumes:
+     - name: config
+       configMap:
+         name: fortune-config
+         defaultMode: "6600"    <-----1
 
-Secrets
---------
+     1 will change the files to -rw-rw----
+
+    To see the file modes
+    > kubectl exec fortune-configmap-volume-default-mode -c web-server -- ls -l /etc/nginx/conf.d
+
+
+
+Secrets and Secret Volumes
+--------------------------
 secrets are like config maps except that they hold secret information
--secrets can be passed to the container as environment variable or 
+- secrets can be passed to the container as environment variable or 
 - expose secret entries as files in a volume
+- secrets are only distributed to nodes that run the pods that need access to the Secret volume
+- secrets are stored in memory, preventing the need to wipe the disk after 
+- secrets are never written to disk
 
-secrets are only distributed to nodes that run the pods that need access to the Secret volume
--secrets are stored in memory, preventing the need to wipe the disk after 
+(Every pod has a default token secret mounted into every container. 
+ This token is required for the pod to  communicate with the API Server. 
+ The default token is an example of a secret volume)
 
+(You can disable the mounting of the default token into a container by
+ by setting automountService-AccountToken to false in the pod spec)
 
 Secrets are kubernetes resources, so you can list them using:
 > kubectl get secrets
@@ -838,7 +865,7 @@ Data
 ====
 ca.crt:     1066 bytes
 namespace:  7 bytes
-token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZWNyZXQubmFtZSI6ImRlZmF1bHQtdG9rZW4tcndtazkiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGVmYXVsdCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6ImFmMDM3OWY3LWM1MjYtMTFlOC04MGNiLTA4MDAyNzU1MWZjNyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZWZhdWx0OmRlZmF1bHQifQ.ayXitGfLE9Fje-EAvrJKXdfGTz_TT_gpPe7Sy5oeosYQI-vEQLybtgUAZ_YfGa0xh04Eb4OVoEdFCqKsBjhyq5J7aOY5N4z7cqknLlU5cczL5i2y1C4tc4BKEDlZrnE3nOpCmXAnTQXU_D0mbD_QbJR_wotq3y2xqg6zHnioCYP2QA__q5qasg1cXruGVUQXNjVOXWdaDhY4BCdG_OYEZeCp2p6bSAOVzuAV48GvEKE_w1JCtIXBYmTtuQadVblfAEuYDA3DZ26r5aOoi917tCmL16o3naoNZSRlSFlkTf-1j8-DDpXjWTxLNks-xfWJPzU4UryWSum21bHEx6lCBQ
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ld...
 
 
 Name:         tls-secret
@@ -854,7 +881,6 @@ tls.crt:  997 bytes
 tls.key:  1679 bytes
 
 
-Every container is mounted the default-token secret
 
 You can see where the default secret token is mounted by 
 > kubectl describe pods
@@ -873,17 +899,52 @@ ca.crt
 namespace
 token
 
-Creating Secrets
-----------------
 secrets are just configmap base64 encoded
 
+
+Creating Secrets
+----------------
+Just like configmaps, there are multiple ways to create secrets
+ -using literals
+ -using files/directorys
+
+Creating Secrets from Literals
+------------------------------
+ >kubectl create secret generic test-secret --from-literal=jinx=holler
+  secret/test-secret created
+
+  We can see the contents of the secret configmap
+ >kubeclt get secret test-secret -o yaml
+
+apiVersion: v1
+data:
+  jinx: aG9sbGVy
+kind: Secret
+metadata:
+  creationTimestamp: 2019-01-17T06:08:24Z
+  name: test-secret
+  namespace: default
+  resourceVersion: "672906"
+  selfLink: /api/v1/namespaces/default/secrets/test-secret
+  uid: 4cb328c4-1a1e-11e9-9d69-080027551fc7
+type: Opaque
+
+
+Creating Secrets from files/directory
+-------------------------------------
+There are two ways to create secrets configmap from files
+- kubectl create secret <encoding> <secret-name> --from-file=...
+- kubectl create -f <secrets spec yaml file>
+
+
+Creating Secrets
+----------------
 To create secrets, first we need to create a special configmap called secrets
 
 > echo foo > bar
 > echo secret1 > ca.cert
 > echo secret2 > tls.cert
 > kubectl create secret generic fortune-https-secret --from-file=bar --from-file=ca.cert --from-file=tls.cert
-
 
 To see the contents of the secrets config map
 > kubectl get secret fortune-https-secret -o yaml
@@ -903,24 +964,59 @@ metadata:
 type: Opaque
 
 
-When viewing secret config maps, they will be base64 encoded. 
-Why are secrets base64 encoded?
-Secrets can be binary, which base64 will convert binary values into plain-text.
+Creating Secret Resources
+-------------------------
+You can also create secrets using a resource spec
 
-But when you view the contents of the file mounted on the volume, they are 
-the same as the original (not base64 encoded)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ninja-secret
+stringData:
+  ninja: i am a ninja
+data:
+  tls.cert: LsOtlja2VisLtlyJyaHFURSLKtka18nbjax...
 
-Here is the contents of foo, which in the config map, was encoded, but in the volume mount:
-> kubectl exec nginx-boom-with-secrets -- more /usr/my/secrets/foo
-bar
+If the tls.cert is a valid base64 encoded string, then we can create this like any other resource
+> kubectl create -f ninja-secrets.yaml
 
-It is not encoded, which means your application can use the secret files as they are (no decoding
-necessary, which should make sense)
 
-Secrets are limited to 1 MB.
--------------------
 
-To use a secret volume, in your pod spec:
+We can view the secret resources
+> kubectl get secrets
+NAME                  TYPE                                  DATA      AGE
+default-token-rwmk9   kubernetes.io/service-account-token   3         107d
+fortune-https         Opaque                                4         22h
+secret-nginx          Opaque                                2         1h
+tls-secret            kubernetes.io/tls                     2         84d
+ninja-secret          Opaque                                2         4s
+
+We can get the contents of the secrets
+> kubectl get secrets ninja-secret -o yaml
+apiVersion: v1
+data:
+  https.cert: MIICvDCCAaQCCQC...
+  ninja: bmluamFQYXNzd29yZA==
+kind: Secret
+metadata:
+  creationTimestamp: 2019-01-16T06:13:44Z
+  name: ninja-secret
+  namespace: default
+  resourceVersion: "646733"
+  selfLink: /api/v1/namespaces/default/secrets/ninja-secret
+  uid: e109feb0-1955-11e9-9d69-080027551fc7
+type: Opaque
+
+
+Using a secrets volume
+----------------------
+There are two uses for secret config maps
+- main use is as a secret volume
+- as an environment variable value
+
+Creating a Secrets Volume
+-------------------------
+To use a secret volume, reference the secrets configmap in your pod spec:
 
 apiVersion: v1
 kind: Pod
@@ -965,58 +1061,60 @@ Here we have declared a secret volume (certs) that gets its contents from the se
 The secret volume handle certs is used as the alias that gets referenced in the volume mounts,
 which also configures that secret volumes mount point, as well as its readOnly properties.
 
-Other ways to create a secret
------------------------------
-Keep in mind that a secret configmap is a resource, so we should be able to declare it like any other resource:
-
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ninja-secret
-stringData:
-  ninja: i am a ninja
-data:
-  tls.cert: LsOtlja2VisLtlyJyaHFURSLKtka18nbjax...
-
-If the tls.cert is a valid base64 encoded string, then we can create this like any other resource
-> kubectl create -f ninja-secrets.yaml
-
-We can view the secret resources
-> kubectl get secrets
-NAME                  TYPE                                  DATA      AGE
-default-token-rwmk9   kubernetes.io/service-account-token   3         107d
-fortune-https         Opaque                                4         22h
-secret-nginx          Opaque                                2         1h
-tls-secret            kubernetes.io/tls                     2         84d
-ninja-secret          Opaque                                2         4s
-
-We can get the contents of the secrets
-> kubectl get secrets ninja-secret -o yaml
-apiVersion: v1
-data:
-  https.cert: MIICvDCCAaQCCQCHqd+QlxmpGDANBgkqhkiG9w0BAQsFADAgMR4wHAYDVQQDDBV3d3cua3ViaWEtZXhhbXBsZS5jb20wHhcNMTkwMTE1MDcyMDI0WhcNMjkwMTEyMDcyMDI0WjAgMR4wHAYDVQQDDBV3d3cua3ViaWEtZXhhbXBsZS5jb20wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDVUtK8jtjPF+qA51fxoMDPJWJ1LYB/Nd3t3DfSmC9aZ8ywhITfFUA2thZREdNbedWHNPKFU3ViJh2hjT5udQNS8t4FL2C9qZSSBrrtMfNEDsrX2P/iQTm53Wrfp7B+CngI1KU22/7D0EHq2MWOh3WeldS50JbPkD2Bp9fzZK7r5O3G03OPLqsvl2Ra+9po+lwuGLeunbVm3V9BizvHN9g1VJyvsBK9JYg+Qf0g4oxoBMbYjTemMrtDiQpWaLt/kqN/tjwlJGHLpae11uiNIZ/cMqfnMcmITHmREczudwxxKmPORWIfzeTzlvLKzM/4SNPP4PHslrCdQNeT/RnqXUq9AgMBAAEwDQYJKoZIhvcNAQELBQADggEBAGPmpg9Li1RQIPj5o0mzHWa9mF3E9Vo5GPI8L1bndjM19c3MQ4772g1WJSo8jWu5irRrTd1Z/aIwLY18oDgMEvsd+ZIYaUf/KB+fs+aWau8CYdCTM9kCiFNaEWOZiVYVcP5X0fCwH8lC7ioYSqZ6ojaI9aaz/ogBMXq0B7Z5nQIGgiShVoFNnEw8JyY5Ech28Ii7HGaEz74JPrIGbPnVURvXi5oCmqPr3NFvf6oE+kw1Xa+quQIJLmr2Ol50t8Bcdr7RUUQ0T9nf+xuBzbm7huFkMEpjjaubSy+1oF2VMkNbcgyawLn+14hl94rGIBC1kue9yd+f1A4QdXXQNQVOmYE=
-  ninja: bmluamFQYXNzd29yZA==
-kind: Secret
-metadata:
-  creationTimestamp: 2019-01-16T06:13:44Z
-  name: ninja-secret
-  namespace: default
-  resourceVersion: "646733"
-  selfLink: /api/v1/namespaces/default/secrets/ninja-secret
-  uid: e109feb0-1955-11e9-9d69-080027551fc7
-type: Opaque
+Secrets as Environment Variable
+-------------------------------
+To use a secret value as an env variable, in the pod spec:
+ ...
+ env:
+ - name: FOO_SECRET
+   valueFrom:
+     secretKeyRef:
+       name: secret-configmap-name
+       key: foo
 
 
-Note that both the stringData and the certs are base64 encoded even though the spec is not.
+
+Editing your secret configmap
+----------------------------
+You can edit a secret configmap just like you do a regular configmap
+
+ > kubectl edit secret <secret-configmap>
+
+   this will display your secret config map (all base64 encoded). You can either
+   add a stringData section or add to the data section.
+
+
+Features of Secrets
+-------------------
+-secrets have a stringData section
+-secrets are base64 encoded
+-secrets have 1 mb size constraints
+-secrets are never written to physical disk, they use in memory file systems
+
+If you use the stringData section of a secret spec, you can add the secret value in plain text,
+then when the secrets is created, it will be base64 encoded.
+You will never see the stringData in plaintext, it is write-only.
 Thats because the secrets config map will always return it base64 encoded.
+
+However, when the secret volume is created, the file will be not base 64 encoded
+they are the same as the original (not base64 encoded)
+
+Here is the contents of foo, which in the config map, was encoded, but in the volume mount:
+  > kubectl exec nginx-boom-with-secrets -- more /usr/my/secrets/foo
+    bar
+
+It is not encoded, which means your application can use the secret files as they are (no decoding
+necessary, which should make sense)
+
 
 
 Secret volumes are always mounted as in memory, so that you do not have to worry about deleting 
 the contents, so you should be able to see that:
-> kubectl exec nginx-boom-with-secrets -c web-server -- mount | grep secrets
-tmpfs on /usr/my/secrets type tmpfs (ro,relatime)
-tmpfs on /run/secrets/kubernetes.io/serviceaccount type tmpfs (ro,relatime)
+ > kubectl exec nginx-boom-with-secrets -c web-server -- mount | grep secrets
+   tmpfs on /usr/my/secrets type tmpfs (ro,relatime)
+   tmpfs on /run/secrets/kubernetes.io/serviceaccount type tmpfs (ro,relatime)
 
 tmpfs is an in memory temporary fs, which confirms that
+
 
 
