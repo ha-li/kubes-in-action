@@ -1117,4 +1117,11 @@ the contents, so you should be able to see that:
 tmpfs is an in memory temporary fs, which confirms that
 
 
+Docker Credentials
+------------------
+kubernetes supports special docker secrets for signing in to docker hubb
+for pulling from a private repositories.
 
+-this can be used in a pod spec to automatically sign into docker and
+ pull that image (a private image) as the pod is being created
+(see manning book)
