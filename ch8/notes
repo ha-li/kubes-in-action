@@ -2,6 +2,8 @@ Accessing Pod metadata + other resources from applications
 ----------------------------------------------------------
 Topics discussed
 -using DownwardAPI to pass info to containers
+-using Kubernetes API Server to access metadata
+
 
 many applications will need info about their environment, including details about:
  - themselves
@@ -50,5 +52,84 @@ From the spec you should see that you need to define a divisor for resource fiel
 you get the value in the unit you need
 
 All processes running inside the container will now be able to see/use those environment variables.
+
+Container environment variables can only access the containers own resource limit and request.
+A container env variable cannot access another containers resource limit/request.
+(A downward volume can however be used to do this)
+
+
+Exposing metadata through downward volume
+-----------------------------------------
+You can expose the metadata through a file instead by using a downward volume, which you
+can then mount into your container.
+
+For certain metadata, you must use a downwardAPI volume. These metadata include:
+ - pod labels
+ - pod annotation
+
+eg: see ch8/downward-api-volume.yaml
+
+To create the resource then see the volume content and the file content
+ > kubectl create -f downward-api-volume.yaml
+ > kubectl exec downward-volume -- ls -l /etc/download
+ > kubectl exec downward-volume -- more /etc/download/labels
+
+The reason that labels and annotations are only available through volume is because they can
+be modified while a pod is running, so when they change, kubernetes will update the files,
+allowing the pod to see the up to date value. You just have to write your application to
+read the value in real time when they get updated.
+ Environment variables on the other hand cannot be updated once they are created, which is
+why pod labels and annotations are not exposed through env variables.
+
+When you are exposing a container-level metadata (such as container resource limit/request)
+you need to specify the name of the container whose resource you are referencing, because
+there may be more than one container in your pod (containerName) but volumes are defined
+at the pod level.
+
+Downward volumes can be used to expose a 2nd containers resource limit/request to another
+container (in contrast an env variable cannot) provided they are in the same pod.
+
+
+
+Using the Kubernetes API Server
+-------------------------------
+The amount of meta data available through downward api is rather limited.
+At most it limits you to the pod's own meta data, but there will be times when
+you want to see data about the whole cluster or other pods. 
+
+This is where the Kubernetes API Server comes in play.
+
+
+To see the node ip of the master api service, run:
+ > kubectl cluster-info
+ Kubernetes master is running at https://192.168.99.100:8443
+
+ To access this, you have to use a proxy 
+ > kubectl proxy
+ Starting to server on 127.0.0.1:8001
+ 
+This proxy will start on localhost:8001
+ So you can navigate to localhost:8001 (using curl or a browser)
+ > curl localhost:8001
+ {
+    "paths", 
+    ...
+ }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
