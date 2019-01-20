@@ -1,0 +1,54 @@
+Accessing Pod metadata + other resources from applications
+----------------------------------------------------------
+Topics discussed
+-using DownwardAPI to pass info to containers
+
+many applications will need info about their environment, including details about:
+ - themselves
+ - other components in the cluster
+ - 
+
+Using DownwardAPI to pass meta data to container
+------------------------------------------------
+When your application needs access to data that you can configure ahead of time, you
+typically will use configmap volumes
+ 
+When your application needs access to data that is not known until the pod is created:
+These metadata include:
+ - pod ip
+ - name name
+ - pod labels and annotation
+ - pod namespace
+ - node name pod is running on
+ - name of service account 
+ - cpu/memory request for each container
+ - cpu/memory limit of each container
+ - pod labels
+ - pod annotation
+
+
+The best way to get these types of information is through a Downward API.
+
+The DownwardAPI is used to pass in meta data about the pod + its environments.
+There is two ways to access the downward API info in your application:
+ - as environment variable
+ - file in a downwardAPI volume
+
+
+Exposing metadata through environment variables
+-----------------------------------------------
+To expose a pod/containers metadata through an environment variable, in the pod spec/manifest
+you declare an environment variable and then use a fieldPath to populate the value.
+
+eg see ch8/downward-api-env.yaml
+
+ To create the resource, then see the environment variables of the pod
+ > kubectl create -f downward-api-env.yaml
+ > kubectl exec downward -- env
+
+From the spec you should see that you need to define a divisor for resource fields so that
+you get the value in the unit you need
+
+All processes running inside the container will now be able to see/use those environment variables.
+
+
