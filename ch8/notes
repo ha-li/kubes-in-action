@@ -112,14 +112,198 @@ This proxy will start on localhost:8001
  So you can navigate to localhost:8001 (using curl or a browser)
  > curl localhost:8001
  {
-    "paths", 
-    ...
+  "paths": [
+    "/api",
+    "/api/v1",
+    "/apis",
+    "/apis/",
+    "/apis/admissionregistration.k8s.io",
+    "/apis/admissionregistration.k8s.io/v1beta1",
+    "/apis/apiextensions.k8s.io",
+    ... 
+   ]
+ }
+ 
+ These paths correspond to the api groups and versions you specify in your resource definitions
+ when creating the resources (pods, services etc)
+
+ These paths are valid url you can call on the API Server to get additional information:
+ eg:
+  > curl localhost:8001/api
+{
+  "kind": "APIVersions",
+  "versions": [
+    "v1"
+  ],
+  "serverAddressByClientCIDRs": [
+    {
+      "clientCIDR": "0.0.0.0/0",
+      "serverAddress": "192.168.99.101:8443"
+    }
+  ]
+}
+
+
+ And localhost:8001/api/v1 corresponds to the resources that were defined with
+ spec: apiVersion: v1
+
+
+ If you explore each of the resources you can discover:
+  - groupings : collections that resources fall under
+  - whether the resources are namespaced
+  - the verbs that can be applied to each resource 
+  - the kind 
+  - REST endpoints for modifying their status
+  
+
+ You can get a listing of all jobs, the spec for a specific job, and much more
+ from the API Server.
+
+
+Talking to the API server from within a Pod
+-------------------------------------------
+Inside a pod, you won't have kubectl, so how do you talk to the API Server:
+ - need to find the API Server ip
+ - make sure that it is the API Server and not an impersonation
+ - authentication
+
+
+ To talk to the API Server you need a pod definition with a curl command, eg
+   curl-pod.yaml
+
+ > kubectl create -f curl-pod.yaml
+
+ Then to get a shell on that created pod/container
+ > kubectl exec curl -it -- bash
+ root@curl:/#
+
+ Then look for the env KUBBERNETES_SERVICE
+ root@curl:/# env | grep KUBERNETES_SERVICE
+KUBERNETES_SERVICE_PORT=443
+KUBERNETES_SERVICE_HOST=10.96.0.1
+KUBERNETES_SERVICE_PORT_HTTPS=443
+
+ These values should match up with the value you get from outside the pod:
+ > kubectl get svc
+ NAME                 TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+kubernetes           ClusterIP      10.96.0.1        <none>        443/TCP        111d
+kubia-loadbalancer   LoadBalancer   10.104.192.152   <pending>     80:30817/TCP   90d
+kubia-nodeport       NodePort       10.98.250.158    <none>        80:30123/TCP   91d
+
+
+ In ch5, we learnt that each Service resource gets a DNS entry, you can curl to 
+ https://kubernetes (assuming the port is 443).
+
+ root@curl:/# curl https://kubernetes
+curl: (60) SSL certificate problem: unable to get local issuer certificate
+More details here: http://curl.haxx.se/docs/sslcerts.html
+
+curl performs SSL certificate verification by default, using a "bundle"
+ of Certificate Authority (CA) public keys (CA certs). If the default
+ bundle file isn't adequate, you can specify an alternate file
+ using the --cacert option.
+ ...
+
+ The error tells us we are missing the ca cert. Recall in the secrets (ch7) there
+ was the default token which is mounted into each container at 
+ /var/run/secrets/kubernetes.io/serviceaccount/
+
+ root@curl:/# ls /var/run/secrets/kubernetes.io/serviceaccount/
+ ca.crt    namespace   token
+
+ the ca.crt is our certificate of the CA used to sign the kubernetes API server certificate.
+ You need to verify the server's certificate is signed bby the CA. 
+ 
+ > root@curl:/# curl --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.cert https://kubernetes
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+    
+  },
+  "status": "Failure",
+  "message": "forbidden: User \"system:anonymous\" cannot get path \"/\"",
+  "reason": "Forbidden",
+  "details": {
+    
+  },
+  "code": 403
+}
+
+ The response verifies the servers identity because the certificate was signed by the CA you
+ trust. But you don't have authorization, which is why you get the 403.
+
+
+ Next set the CURL_CA_BUNDLE so that you don't need to specify --cacert anymore
+ >root@curl:/# export CURL_CA_BUNDLE=/var/run/secrets/kubernetes.io/serviceaccount/ca.cert
+
+ Now you should be able to curl the API Server:
+ root@curl:/# curl https://kubernetes
+ {  
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {
+
+  },
+  "status": "Failure",
+  "message": "forbidden: User \"system:anonymous\" cannot get path \"/\"",
+  "reason": "Forbidden",
+  "details": {
+
+  },
+  "code": 403
+}
+
+ You will still need to authenticate with the server, which requires the use of
+ the default token, so lets export that as a env variable
+
+ root@curl:/# export TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+
+ You can then get the namespace from the secrets volume and get the pods from that namespace
+ root@curl:/# NS=$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)
+ root@curl:/# curl -H "Authorization: Bearer $TOKEN" https://kubernetes/api/vi/namespace/default/pods/
+ 
+And you should get a response.
+
+
+
+Ambassador containers
+----------------------
+An ambassador container pattern is one where a side car container runs alongside the main
+container. This side car is responsible for communicating with the API Server and
+it will take care of certificate and namespacing etc.
+
+if your main application container needs to talk to the API Server, it will instead talk
+to the side car (proxy) via HTTP and let the ambassador handle the HTTPS calls directly
+to the API Server.
+ eg: curl-with-ambassador.yaml
+
+ To create the pod with the side car:
+ > kubectl create -f curl-with-ambassador.yaml
+ > kubectl exec -it curl-with-ambassador -c main bash
+ root@curl-with-ambassador:/# curl localhost:8001
+ {
+   ...
  }
 
+ This output should be the same as before, but now you don't have to deal with all the
+ certificates etc.
 
 
+Client Libraries
+----------------
+When you need to do more advanced queries to the Kubernetes API, you need one of 
+the client libraries:
+ - golang client: https://github.com/kubernetes/client-go
+ - python clent: https://githubb.comkubernetes-incubator/client-python
+ 
+As well there are clients in Java, Node, PHP, Ruby, Scala, Clojure, Perl
+ 
 
-
+  
+ 
+  
+ 
 
 
 
