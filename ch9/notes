@@ -1,0 +1,53 @@
+Deployments
+-----------
+
+-replacing pods with new pods
+-updating managed pods
+
+kubernetes helps you move towards a zero down time application updating process
+-this can be done with replication sets and replication controllers, but
+ a deployment resource can also be added that sits onto of a replication set/controller
+ that allows you to update applications declaratively
+
+
+There are two main ways to update applications running in pods
+-you tear down all the old pods and then start up the new pods
+-start up the new pods, and once they are up, tear down the old ones,
+ either by adding all the new pods at once, then deleting all the 
+ old pods at once, or adding new pods sequentially while removing
+ old pods one at a time
+
+Each method as its advantages and disadvantages
+-if you tear down all at once and then deploy, there is a small down time
+ but it requires the least amount of resources
+-the second option there is always a service up, so there is no gap, but
+ it requires up to double the required resources, and may not always be
+ possible if you have an underlying eg database change that is not
+ supported in an old resource
+
+Kubernetes aids in both forms of deployment.
+-if you are downing a tear down before spinning up again, you can modify
+ your replication set template so that it refers to v2 instead of v1.
+ the replication controller will then notice no pods match its label
+ selector and will then spin up the new instances
+
+-if you are doing a blue-green deployment where you bring up a new set
+ of pods with a different label (v2), and then switch over the Service
+ selector from v1 to v2, before deleting the old replication set
+ (to change the Service selector use kubectl set selector command)
+-you can also do something similar but scaling down step wise while
+ scaling up step wise, in which case, you will have the Service selector
+ include both the old and new pods. Doing this manually is laborious, 
+ Kubernetes allows you to do this with one command.
+
+Rolling Updates with Replication Controllers
+--------------------------------------------
+You can create a manifest with multiple resources bundled in it.
+Just put all the specs into one file, each resource must be separated
+by a line with 3 dashes (---)
+
+In this excersice, we will create a Replication and LoadBalancer Service
+(see kubia-rc-and-service-v1.yaml).
+
+ > kubectl create -f kubia-rc-and-service-v1.yaml
+
