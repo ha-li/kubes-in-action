@@ -104,9 +104,199 @@ create another RS, and then coordinate the scale up and down of
 the pods.
 
 
+If we look at the Deployment spec, we see that we no longer need to name
+our Deployment resource with v1, unlike when we used a RC. A Deployment
+can at any given point in time have multiple pod versions running, so
+it makes no sense to name it according to a version of the underlying pod.
+
+To create the deployment resource:
+ > kubectl create -f kubia-deployment-v1.yaml --record
+
+The --record will record the command in the revision history will is useful.
+
+You can check on the status of a deployment with the command:
+ > kubectl rollout status deployment kubia
+
+The pods that are created by a deployment will be named in accordance with
+its replicaset.
+ > kubectl get rs
+NAME               DESIRED   CURRENT   READY     AGE
+kubia-6fc8ff6566   3         3         3         2m
+
+ > kubectl get pods
+NAME                     READY     STATUS    RESTARTS   AGE
+kubia-6fc8ff6566-692sv   1/1       Running   0          2m
+kubia-6fc8ff6566-ttft7   1/1       Running   0          2m
+kubia-6fc8ff6566-wgkff   1/1       Running   0          2m
+
+You can see the naming convention above.
 
 
+Advantage of Deployment Updating an application
+-----------------------------------------------
+Updating a Deployment application involves simply updating/modifying the
+pod template defined in the Deployment Resource, adn then kubernetes
+will take care of the rest. This typically means just updating the 
+image tag in the pod template.
 
+There are two strategies that Deployments push updates.
+- Recreate
+- RollingUpdate
+
+RollingUpdate is the default strategy where old pods are removed one at 
+a time, while new ones are added, keeping the application available
+through out hte process, and no drops in the capacity to handle requests.
+
+Recreate causes all the old pods to be deleted before new pods are created.
+This used if your changes are not compatiable with the old application.
+This will require an outage.
+
+Deployment also allow you to specify different parameters for an update,
+including:
+ - minReadySeconds - allows slowing/speeding up the rolling update
+
+Use the patch option to modify a resource property or limited number of 
+properties without opening an editor:
+
+Here we add the minReadySeconds to the Deployment spec and set it to 10.
+This will not change the pods yet, only the Deployment spec
+> kubectl patch deployment kubia -p '{"spec": {"minReadySeconds": 10}}'
+
+Then to actually trigger the deployment, we have to modify the image
+> kubectl set image deployment kubia nodejs=luksa/kubia:v2
+
+If you run kubectl get pods, you'll see a list of new pods being created,
+and the old pods terminating and expiring.
+
+The actually changes are made by the kubernetes control plane rather
+then the kubectl client.
+-a new ReplicaSet is created, then scaled up slowly while the old
+ ReplicaSet is scaled down to 0.
+(Modifying a configmap will not trigger an update)
+-The old ReplicaSet is not destroyed by the Deployment Resource.
+ That's because it allows you to do a rollback.
+
+Rollbacks
+---------
+Say your changes had a bug and you need to rollback.
+
+To Rollback you tell kubernetes to undo the last rollout of a Deployment:
+> kubectl rollout undo deployment kubia
+
+First update your image and then do the rollout deployment
+> kubectl set image deployment kubia nodejs=luksa/kubia:v3
+> kubectl rollout status deployment kubia
+
+You can check on the status of the deployment
+> kubectl rollout status deployment kubia
+Waiting for deployment "kubia" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "kubia" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "kubia" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "kubia" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "kubia" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "kubia" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "kubia" rollout to finish: 2 out of 3 new replicas have been updated...
+Waiting for deployment "kubia" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "kubia" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "kubia" rollout to finish: 1 old replicas are pending termination...
+deployment "kubia" successfully rolled out
+
+Then to rollback your changes, you tell kubernetes to undo the last rollout
+ > kubectl rollout undo deployment kubia
+
+The undo be can be used while the rollout process is still in progress, essentially 
+aborting the rollout. 
+
+
+Viewing the History of a Deployment
+-----------------------------------
+You can view the revision history:
+> kubectl rollout history deployment kubia
+
+And you can rollback to a praticular revision
+> kubectl rollout undo deployment kubia --to-revision=1
+where 1 is the value returned from the history commmand
+
+The old ReplicaSets hold the information of the deployment at that specific version,
+so you should not delete these manually. Doing so will prevent you from rolling back.
+
+
+Configurations for Deployment
+-----------------------------
+You can control how many pods are created at each step 
+maxSurge
+maxUnavailable
+
+maxSurge - how many pods you can have above the desired replica count configured 
+           in the Deployment Resource. Default is 25% (rounded up to a count)
+
+maxUnavailable - how many pods are unavailable relative to the desired count.
+                 The newly created pods are unavailable until they pass health check.
+
+Pausing During Deployment
+-------------------------
+You can pause a deployment, allowing you to verify the new pod is working fine
+before continuing the deployment.
+
+Update the image, and then pause the rollout
+> kubectl set image deployment kubia nodejs=luksa/kubia:v4
+> kubectl rollout pause deployment kubia
+
+A new pod should have been created, but the old pods have not been torned down yet.
+So there should be 4 pods. 
+> kubectl get pods
+NAME                     READY     STATUS    RESTARTS   AGE
+kubia-5857d5f9ff-262rs   1/1       Running   0          34m
+kubia-5857d5f9ff-s4bmt   1/1       Running   0          21m
+kubia-5857d5f9ff-tvqx8   1/1       Running   0          22m
+kubia-6bb8b7b85c-8npvs   1/1       Running   0          26s
+
+And you can match these up with their RepicaSets
+> kubectl get rs
+NAME               DESIRED   CURRENT   READY     AGE
+kubia-54c887cf4d   0         0         0         50m
+kubia-5857d5f9ff   3         3         3         1h
+kubia-6bb8b7b85c   1         1         1         42s
+
+If a deployment is paused, the undo command will not undo until you resume the deployment.
+
+This is not the same as a canary deployment.
+Canary deployments use 2 different deployment resources and scale them accordingly.
+
+To resume the paused deployment:
+> kubectl rollout resume deployment kubia
+
+
+Healthcheck Readiness Check Delay
+----------------------------------
+minReadySeconds property tells how long to wait after a pod is ready before it is
+treated as available. The next pod will not roll out until the first pod is ready.
+If a new pod is not ready and its readiness probe fails within minReadySeconds, the
+rollout will be bblocked.
+
+use the minReadySeconds as an airbag, setting it to 30-60 seconds.
+
+Adding a health check probe:
+ (kubia-deployment-with-readiness.yaml)
+
+Apply the new template, since we are reusing the kubia name for the deployment,
+applying the new template will update the existing template:
+
+ > kubectl apply -f kubia-deployment-with-readiness.yaml
+
+This will update the existing deployment with the new image, as well as set the
+health check configurations and other new changes in the spec.
+
+Since this will fail during the health check, the deployment never moves
+on, and you will see that the ready cound of the pods is 0/1.
+
+After 10 mins, a deployment that does not finish is considered failed.
+And you can undo the last rollout
+> kubectl rollout undo deployment kubia
+
+
+The time after which a Deployment is considered failed can be configured in
+progressDeadlineSeconds property.
 
 
 
