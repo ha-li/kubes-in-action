@@ -51,3 +51,67 @@ In this excersice, we will create a Replication and LoadBalancer Service
 
  > kubectl create -f kubia-rc-and-service-v1.yaml
 
+To do a rolling update, you will use the command 
+ > kubectl rolling-update <old-rc> <new-rc> --image=<new image>
+ > kubectl rolling-update kubia-v1 kubia-v2 --image=luksa/kubia:v2
+
+This will do a scale up of kubia-v2 while scaling down v1. Kubernetes 
+will copy the spec from v1, replace the image, and change the label 
+selector, as well as add a new label "deployment". In fact kubernetes
+has modified both the replication controller as well as the service
+so that the deployment label matches. 
+
+To see it:
+ > kubectl describe rc kubia-v2
+
+Once the proper labels have been added to the replication controller
+and the service, the replication controller on the old image
+is scaled down by 1 while the new replication controller is scaled up 
+by 1. 
+
+Then the scale step is repeated. Until the old is 0 and the new is fully
+up.
+
+
+There are some negatives about this process of scaling up and down:
+-kubernetes modified your labels on the rc and service, which is 
+ unexpected behavior
+-kubectl client is the one sending requests to the master api server.
+ what happens if you lose network connection during the update, 
+ then pods and replication controllers would end up in an intermediate
+ state. 
+-the kubectl commands mean that it is a imperative, but most of 
+ kubernetes is declarative
+
+These negatives lead to the development of Deployment Resources
+
+Deployments for Declarative App Updates
+---------------------------------------
+The spec for a Deployment Resource 
+ see kubia-deployment.yaml
+
+Deployment is a higher level resource meant for deploying applications
+and updating them declaratively, rather than through a rc or rs, which 
+are lower level concepts.
+
+A Deployment will create its own ReplicaSet underneath, which it will
+then manage as part of the deployment process. During the deployment
+process the RS will actually do the creation of new pods and then
+manage them.
+
+The role of the Deployment resource during the update process is to 
+create another RS, and then coordinate the scale up and down of
+the pods.
+
+
+
+
+
+
+
+
+
+
+
+
+
