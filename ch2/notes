@@ -1,3 +1,151 @@
+-Review of Docker 
+-Installing minikube on mac
+-
+
+
+Review of Docker
+----------------
+-building a docker image
+-running a docker image
+-exploring inside a docker container
+-stopping a container, clean up of stopped containers
+-listing docker images + other commands
+-pushing images to repos
+
+Building a Docker Image
+-----------------------
+Create a simple nodejs app called app.js 
+and build a docker image from it (Dockerfile)
+- call the docker image kubia
+
+ > docker build -t kubia .
+
+ This command will build a container called kubia from the current directory's
+ Dockerfile. The Dockerfile of this example uses as its base, node:7
+ and adds to it, our app.js at /, and sets its entrypoint as "node app.js"
+
+
+After the docker image has been build, you should be able to see it on your
+host os
+ > docker images 
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+kubia               latest              03e2e0d60bec        56 seconds ago      660MB
+
+
+Running a docker image
+----------------------
+To run a docker image of busybox:
+
+ > docker run <image> or docker run <image>:<tag>
+ > docker run busybox echo "Hello World"
+
+
+Now run the image:
+ > docker run --name kubia-container -p 8080:8080 -d kubia
+
+ This command tells docker to create a container called kubia-container
+ from the kubia image in detached mode (-d), with port mapping 8080 inside the
+ container to 8080 outside the container (-p 8080:8080).
+ 
+ You should be able to access the app using curl or browser http://localhost:8080
+ > curl localhost:8080
+ You've hit ...
+
+
+Exploring Inside a Running Docker Container
+-------------------------------------------
+You can run a shell inside of a running container:
+
+ > docker exec [OPTIONS] CONTAINER COMMAND [ARGS...]
+
+ eg:
+ > docker exec -it kubia-container bash
+
+    You are executing (exec) a command (bash) in interactive mode (-it)
+    of the conatiner you named above (kubia-container)
+
+    The -it is actually short hand for two options:
+     -i interactive (keep STDIN open, giving you a command prompt)
+     -t gives you a pseudo terminal (TTY)
+
+
+ You can try out other commands like:
+ > docker exec kubia-container ls /
+  
+    This will run "ls /" on the kubia-container in
+    regular mode (so the prompt will not be interactive)
+    - you should see our app.js in /
+
+ 
+ Once you get a listing of / you can see the directories inside / also.
+ > docker exec kubia-container ls /etc
+ 
+ 
+ You can also more the contents of /app.js to confirm it is the source
+ code we wrote:
+ > docker exec kubia-container more /app.js
+
+
+ You can get a listing of the processes inside the container:
+ > docker exec kubia-container ps 
+
+
+ Or do it interactively:
+ > docker exec -it kubia-container bash
+ 
+ This will give you the prompt and then you can run ps:
+ root@83acd3921c:/# ps
+ root@83acd3921c:/# ps aux
+
+   Both commands should give you a lising of the processes running
+   in the container, and if we built the container right, you should
+   see node app.js for sure.
+
+ You should also be able to see app.js in your host os (in Linux)
+   (in Mac OS, you run docker inside a VirtualBox VM so you have to
+    log into your VM to see the app.js of the container in your host
+    VM file system)
+ 
+
+Stopping a Container + Clean up 
+-------------------------------
+To stop a container:
+ > docker stop <container name>
+ > docker stop kubia-container
+
+ 
+To remove a stopped container: 
+   docker rm <container>
+ > docker rm kubia-container
+ 
+
+Listing Docker Images on your OS
+--------------------------------
+You can list all the docker images you currently have by:
+ > docker images
+
+You can list your running docker containers by
+ > docker ps
+
+You can list stopped docker containers by:
+ > docker ps -a
+
+Pushing Images to Image Repository
+----------------------------------
+To push an image to a repo, you need to tag it first
+ > docker tag kubia haja/kubia
+
+Then you can push it
+ > docker push haja/kubia
+
+
+Now on a different machine you can run the pushed image as
+ > docker run -p 8080:8080 -d haja/kubia
+
+
+Setting up a Kubernetes Cluster
+-------------------------------
+
 minikube is a binary that allows you to run a single instance kubernetes cluster
 -it is great for testing kubernetes and developing apps locally 
 best documentation for installing minikube is here
