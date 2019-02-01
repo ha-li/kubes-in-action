@@ -1,13 +1,17 @@
 All About Pods
 --------------
+-creating pod manifests
+-working with pods
+-working with Logs in Kubernetes
+-setting up port-forwarding 
+-using labels
+
 kubernetes basic unit is a pod
 -containers are used to house single process applications
 -pods are used to house 1 or more container
 -kubernetes is about deploying pods, not containers
 -pods are scaleable
 -when to use multi-container pods and single container pods
--creating pods
-
 
 -usually the containers in the same pod are related and dependent on each other in some way
 -most use cases are 1 container in 1 pod
@@ -103,6 +107,12 @@ the status contains current information about the running pod, such as:
    description + status of each container
    pods internal ip address
 
+
+A Simple YAML Descriptor of a Pod
+---------------------------------
+
+kubia.yaml is a simple pod only descriptor for a pod.
+
 when you are creating your own spec for a pod to launch, you will never 
 define the status, instead you will specify 
  - the api version
@@ -119,96 +129,129 @@ open for connecting to, and explicitly defining ports will allow you to
 attach a name to the port, which will be useful
 
 Pod Spec
-========
+--------
 
-to outline the pod spec
- > kubectl explain pods
+When creating a manifest (descriptor) you can lookup the kubernetes
+reference doc to see which attributes are supported (kubernetes.io/docs/api)
+or use the kubectl explain command:
 
-for specifics of the spec
- > kubectl explain pod.spec
+> kubectl explain pods
+KIND:     Pod
+VERSION:  v1
+
+DESCRIPTION:
+     Pod is a collection of containers that can run on a host. This resource is
+     created by clients and scheduled onto hosts.
+
+...
+
+For specifics of the spec
+> kubectl explain pod.spec
+KIND:     Pod
+VERSION:  v1
+
+RESOURCE: spec <Object>
+
+DESCRIPTION:
+     Specification of the desired behavior of the pod. More info:
+     https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status
+
+     PodSpec is a description of a pod.
+
+FIELDS:
+   activeDeadlineSeconds	<integer>
+     Optional duration in seconds the pod may be active on the node relative to
+     StartTime before the system will actively try to mark it failed and kill
+     associated containers. Value must be a positive integer.
+...
+
 
 Creating A Kubernetes Resource from a Manifest file
-===================================================
-
-to create a pod from a yaml/json spec
+---------------------------------------------------
+To create a pod from a yaml/json spec
  > kubectl create -f <file spec>
  > kubectl create -f kubia-manual.yaml
 
- You should immediately see the response 
-  pod "kubia-manual" created
+   You should immediately see the response pod "kubia-manual" created
 
-  > kubectl get pods will return existing pods and the newly created pod
+You should be able to get listing of pods by:
+ > kubectl get pods 
 
-    NAME           READY     STATUS    RESTARTS   AGE
-    kubia-manual   1/1       Running   0          4s
-    kubia-ww6sb    1/1       Running   1          4d
+   NAME           READY     STATUS    RESTARTS   AGE
+   kubia-manual   1/1       Running   0          4s
+   kubia-ww6sb    1/1       Running   1          4d
 
-  if the pod/container takes a while to start up, you'll see:
+If the pod/container takes a while to start up, you'll see:
 
     NAME             READY     STATUS              RESTARTS   AGE
     kubia-liveness   0/1       ContainerCreating   0          19s
 
-    before it shows running status:
+ Before it shows running status:
 
     NAME             READY     STATUS              RESTARTS   AGE
     kubia-liveness   1/1       Running   0          1m
 
 
-to get the full description after creation depending on the format you are comfortable with:
+To get the full description after creation depending on the format you are comfortable with:
+ > kubectl get pod <pod name> -o yaml
+ > kubectl get pod <pod name> -o json 
 
-  > kubectl get pod <pod name> -o yaml
-  > kubectl get pod <pod name> -o json 
 
-
-Working with logs in Kubernetes
-===============================
-
+Working with Logs in Kubernetes
+-------------------------------
 Container applications usually log to standard output and standard error stream instead of
 writing to a log file. The container will then redirect the streams to files allowing you
 see the container logs by:
+
    eg: docker logs <container id>
 
-
 If you wanted to see the log file container, you could ssh into the pod and then run
-    docker logs <conatiner id>
+ >  docker logs <conatiner id>
 
-but kubernetes allows you to see the log file contents by:
 
+Kubernetes allows you to see the log file contents by:
  > kubectl logs <pod-name>
-   kubectl logs kubia-manual
+ > kubectl logs kubia-manual
 
   logs are rotated daily and when they reach 10 MB. 
   kubectl logs only show current log file.
 
 
-if you pod container multiple containers, you have to specify the container name
+If you pod container multiple containers, you have to specify the container name
  > kubectl logs <pod-name> -c <container>
-   kubectl logs kubia-manual -c kubia
+ > kubectl logs kubia-manual -c kubia
 
 Kubernetes logs are in existence only as long as the pod still lives. If you
 delete the pod, the logs associated with that pod is also deleted, so it is 
-necessary for you to forward your logs to other tools like Splunk.
+necessary for you to forward your logs to other tools like Splunk or 
+set up centralized cluster-wide logging, which stores the logs into a 
+central store. 
 
 
 Port Forwarding
-===============
+---------------
 When you want to talk to a specific pod without going through a service, kubernetes
 allows you to configure port forwarding to the pod
 
- > kubectl port-forward <pod-name> port1:port2
-   will forward port1 of your machine to port2 of your pod
-   to now in a new terminal, use curl localhost:port1 to hit the pods port2
+  > kubectl port-forward <pod-name> port1:port2
 
-   eg:
-   > kubectl port-forward kubia-manual 8888:8080
-     will forward your machines local port 8888 to port 8080 of the kubia-manual pod
-     
-     so now you can connect to your pod through the local port (in a different terminal since
-     the port forwarder will open a port and not return til its closed)
+  will forward port1 of your machine to port2 of your pod
+  to now in a new terminal, use curl localhost:port1 to hit the pods port2
+
+  eg:
+  > kubectl port-forward kubia-manual 8888:8080
+
+  will forward your machines local port 8888 to port 8080 of the kubia-manual pod
+  so now you can connect to your pod through the local port (in a different terminal since
+  the port forwarder will open a port and not return til its closed)
+
+  Allowing you to curl on the local port and hit the pod port:
+  > curl localhost:8888
+  You've hit kubia-manual
  
 
 Labels - Organizing Pods
-========================
+------------------------
 
 In a true production environment, you will be managing thousands of pods, so there
 is a need to organize them for fast retrieval. Labels help you categorize pods
