@@ -1,12 +1,76 @@
+All About Pods
+--------------
 kubernetes basic unit is a pod
 -containers are used to house single process applications
 -pods are used to house 1 or more container
+-kubernetes is about deploying pods, not containers
+-pods are scaleable
+-when to use multi-container pods and single container pods
+-creating pods
+
+
 -usually the containers in the same pod are related and dependent on each other in some way
 -most use cases are 1 container in 1 pod
 -containers in the same pod share the same IPC namespace, so can communicate through IPC,
  have the same IP address, have the same hostname
 
--pods in the same cluster can communicate with other pods through their ip address
+
+Why Do we need Pods
+-------------------
+-why not run multiple processes in a single container
+   When multiple processes run on the same container, you have to manage 
+     things like logging to different files, and how to ingest them
+     or if they log to the same file, how do you figure out which process
+     logs to where
+
+   If a process crashed in a multi-process container, then you would need
+     to manager restarting the process 
+ 
+   With a single process container, you know that the logs in this container
+     belong to the process.
+   If the process crashes, you can just launch the whole container as you 
+     did during the deployment. Since you already solved the deployment,
+     you just reuse it, instead of having to solve for both the deployment
+     of a container as well as the restart of processes.
+
+-why not run containers directly in a node
+   Since you cannot group multiple processes into a single container, then you 
+   will need another higher construct that allows you to group related containers
+   together, allowing you to manage them as a single unit. For example,
+   some different processes share information through IPC. This is only possible 
+   when the containers that house the processes run in the same machine or vm (or pod).
+   But you don't want to deploy the containers on the host, because then when
+   you move the container, you need to move several containers. What you 
+   really want to do is move a single unit, and that unit will automatically
+   move all its internal components, the containers.
+
+**** Important****
+So containers provide blast radius and process/resource isolation, but when
+several processes need to function as a group, you need the blast radius, but
+at the same time, the ability to move the entire group as one. Since they are
+in separate containers, rather than moving 3 units, you want to move 1 unit 
+and get all 3 at the same time, thats what pods provide.
+
+Containers on the same pod can share IPC Namespace, allowing IPC communication.
+
+-pods in the same cluster can communicate with other pods through their ip address.
+ No NAT gateway exists between them.
+
+Pods function much like a physical host or VM in the non-container world.
+Processes running in the same pod are like processes running in the same host/vm,
+but each process is now encapsulated in a container that provides a blast radius.
+
+Organizing Pods
+---------------
+Think of pods as separate machines, bubt where each machine hosts only 1 app.
+Pods are fairly light weight, so you don't want to cram alot of stuff onto the 
+Pod. You can have as many Pods as you wish without incurring too much overhead.
+
+So rather than stuffing too much in a pod, you should organize apps into multiple
+pods, each containing only related components/processes.
+
+Pods also allow you to scale.
+
 
 in real world application you will create a pod through a manifest file
 in either yaml or json format that gets posted to the Kubernets REST API
