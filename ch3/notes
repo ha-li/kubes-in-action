@@ -1,10 +1,11 @@
 All About Pods
 --------------
 -creating pod manifests
+-delete pods
 -working with pods
 -working with Logs in Kubernetes
 -setting up port-forwarding 
--using labels
+-labels (creating, showing, selecting, modifying)
 
 kubernetes basic unit is a pod
 -containers are used to house single process applications
@@ -82,7 +83,7 @@ in either yaml or json format that gets posted to the Kubernets REST API
   because it only allows you to set small number of properties
 
 Kubernets Resource Spec
-=======================
+-----------------------
 
 to get the full yaml description of a pod
  > kubectl get pod -o yaml
@@ -196,6 +197,11 @@ To get the full description after creation depending on the format you are comfo
  > kubectl get pod <pod name> -o yaml
  > kubectl get pod <pod name> -o json 
 
+Deleting Pods
+-------------
+To delete a pod:
+  > kubectl delete po kubia-liveness
+pod "kubia-manual-v2" deleted
 
 Working with Logs in Kubernetes
 -------------------------------
@@ -252,78 +258,84 @@ allows you to configure port forwarding to the pod
 
 Labels - Organizing Pods
 ------------------------
+Labels are a way of categorizing/tagging your pods.
+ - groupings
+ - team names
+ - versions of apps (allowing multiple versions run in prod)
+Labels allow you to organize your pods + other kubernetes objects.
 
-In a true production environment, you will be managing thousands of pods, so there
-is a need to organize them for fast retrieval. Labels help you categorize pods
-so that you can retrieve and affect pods based on their labels.
 
-- you can have multiple versions (v1, v2, ... beta, canary)
-- different microservices
+Labels:
+ - are arbitrary key value pairs that you assign to a resource
+ - can be used to select for a subset of resources
+ - resource can have many label 
+ - the keys of the labels are unique within that resource
+ - attach labels when you create resources, 
+ - can be added/modified after the resource has been created, without the need to recreate the resource.
+ - are defined in the meta data section of a resource spec
 
-labels are the equivalent of aws tags.
--labels are arbitrary key value pairs that you can assign to a resource, which can 
- then be used to select for a subset of resources using the label
+ see kubia-manual-with-labels.yaml for example of labels in a spec
 
--a resource can have more than one label as long as the keys of the labels are unique 
- within that resource
--usually attach a label to a resource when you create them, but labels can be
- added/modified even after the resource has been created, without the need to 
- recreate the resource.
+Aside 
+- a canary release is when you deploy a new version of an application next to the
+  stable version, and only let a small fraction of users hit the canary version to see
+  how it behaves before rolling it out to all users, preventing a large exposure if
+  the release is unstable
 
- aside - a canary release is when you deploy a new version of an application next to the
- stable version, and only let a small fraction of users hit the canary version to see
- how it behaves before rolling it out to all users, preventing a large exposure if
- the release is unstable
 
--when defining the resource manifest, the labels are affixed in the meta data section 
-
-Showing Labels
-==============
+Showing Labels/Selecting by Labels
+----------------------------------
 -labels will be visible to all person with access to that cluster
- > kubectl get pods --show-labels
+  Create the above kubia-manual-with-labels.yaml
+  > kubectl create -f kubia-manual-with-labels.yaml
 
--can also specify the labels you are interested in, and all pods will be returned with
- labels in special columns
- > kubectl get pods -L creation_method,env
-   - the capital -L option will return all pods, displaying the labels provided as arguments to -L
-
--the -l option will select and display only those pods with the provided labels
-
--if you add both -l and -L you will select by label, and display the labels
-  > kubectl get pods -l creation_method -L creation_method
-    will select pods labeled with creation_method, and then list then showing label creation method
-
-Modifying Existing Labels
-=========================
--you can also add labels to an existing pods
- > kubectl label pod kubia-manual creation_method=manual
-   this will add creation_method label of kubia-manual to be manual
-
--if the pod already has that label, then you have to specify to overwrite it
- > kubectl label pod kubia-manual-v2 env=debug --overwrite
+  Show the pod details with labels exposed
+  > kubectl get pods --show-labels
 
 
-Label Selectors
-===============
--to select pods based on labels with a specific value, set the =value on the label selector
- > kubectl get pod -l creation_method=manual
+-labels can also be used as selectors, allowing filtering by labels
+ 
+  -L option will return ALL pods, displaying the labels provided as arguments to -L
+    > kubectl get pods -L creation_method,env
+      Will list all pods, and show all the creation method and env labels as columns
 
--to select pods with a certain label specified regardless of value
- > kubectl get pod -l env 
+  -l option will filter and show only those pods that have the specified labels
+    > kubectl get pods -l creation_method,env
+      Will show only pods that have creation_method and env labels (but will not show the labels)
 
--to select pods on a label and also display the labels, you combine both -l and -L
- > kubectl get pod -l env -L creation_method,env
+    > kubectl get pod -l env 
+      Will show pods with the env label (regardless of value of env label)
 
--to select pods that don't have a certain label, use single quotes and !
- > kubectl get pod -l '!env'
+    > kubectl get pod -l creation_method=manual,team=banking
+      Will select those pods with creation_method=manual and team=banking
+      But will not show those labels
 
--to select pods based on multiple values, use in|notin operator
- > kubectl get pod -l creation_method in (prod,dev)
- > kubectl get pod -l creation_method notin (prod,dev)
+   select pods that don't have a certain label, use single quotes and !
+    > kubectl get pod -l '!env'
+      Will select pods that do not have the env label
+
+  -L -l will select by label, and display the labels
+    > kubectl get pods -l team=banking -L team
+      Will select pods labeled with team, and then list then showing the team values
+
+
+Select pods based on multiple values, use in|notin operator
+  > kubectl get pod -l creation_method in (prod,dev)
+  > kubectl get pod -l creation_method notin (prod,dev)
+
+
+Modifying Pods Labels
+-------------------------
+Add a label to an existing pod using the "label" command:
+  > kubectl label pod kubia-manual creation_method=manual
+    this will add creation_method label of kubia-manual to be manual
+
+Overwrite an existing label by:
+  > kubectl label pod kubia-manual-v2 env=debug --overwrite
 
 
 Using Labels to control pod scheduling
-======================================
+--------------------------------------
 In general you don't want to specify which nodes a pod should be created on, and just allow the kubernetes
 cluster to allocate pods based on their resource requirements (eg, x memory, y cpu, z ssd/hdd)
 but once in a while you will want to control which node a pod will be scheduled on based on certain 
@@ -344,6 +356,8 @@ like wise you can select nodes and have them display the labels
 
 to specify a pod get deployed to a certain node you need to specify in your yaml manifest
 a node selector criteria in the spec selection
+  see kubia-with-node-selector.yaml
+
   apiVersion: v1
   kind: Pod
   metadata:
@@ -354,9 +368,13 @@ a node selector criteria in the spec selection
      containers:
      - image: haja/kubia
        name: kubia
+       ports:
+       - containerPort: 8080
+         protocol: TCP
+
 
 Targeting pod deployment to specific node
-========================================= 
+-----------------------------------------
 Each node has a unique label with the key kubernetes.io/hostname which is the actual hostname of the node.
 You could potentially use this as a label selector to control your deployment, but in general doing so
 would be bad practice because if such a node label does not exist, then the pod will become

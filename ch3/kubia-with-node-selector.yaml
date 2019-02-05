@@ -1,17 +1,13 @@
-# a simple kubernetes manifest
 apiVersion: v1
 kind: Pod
 metadata:
-  name: kubia-manual-v2
-  labels:
-    creation_method: manual
-    env: prod
-    team: t360
+  name: kubia-gpu-selector
 spec:
+  nodeSelector:
+    gpu: "true"
   containers:
   - image: haja/kubia
     name: kubia
     ports:
     - containerPort: 8080
       protocol: TCP
-
