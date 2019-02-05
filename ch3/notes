@@ -6,6 +6,9 @@ All About Pods
 -working with Logs in Kubernetes
 -setting up port-forwarding 
 -labels (creating, showing, selecting, modifying)
+-node selectors using labels
+-pod annotations
+-namespaces
 
 kubernetes basic unit is a pod
 -containers are used to house single process applications
@@ -401,6 +404,8 @@ cluster can quickely get information about each object.
 
 It is a good idea to use namespacing when annotating so that collisions doen't happen
    gecko.com/annotationkey=annotationvalue
+
+   see kubia-manual-with-annotation.yaml
 
 An objects annotation will be in the resources metadata section.
 To view the objects annotation, you need to objects yaml/json manifest
