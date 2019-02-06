@@ -1,0 +1,19 @@
+# a simple kubernetes manifest
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hoe-down-ns
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubia-manual
+  namespace: hoe-down-ns
+spec:
+  containers:
+  - image: haja/kubia
+    name: kubia
+    ports:
+    - containerPort: 8080
+      protocol: TCP
+

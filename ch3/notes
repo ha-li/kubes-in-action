@@ -8,7 +8,7 @@ All About Pods
 -labels (creating, showing, selecting, modifying)
 -node selectors using labels
 -pod annotations
--namespaces
+-namespaces (create, working with, targeting objects to, switching, deleting objects in)
 
 kubernetes basic unit is a pod
 -containers are used to house single process applications
@@ -288,7 +288,11 @@ Aside
 
 Showing Labels/Selecting by Labels
 ----------------------------------
--labels will be visible to all person with access to that cluster
+There are two parameter switches associated with labels:
+  -l is the label selector
+  -L is the label display
+
+Labels will be visible to all person with access to that cluster
   Create the above kubia-manual-with-labels.yaml
   > kubectl create -f kubia-manual-with-labels.yaml
 
@@ -296,30 +300,38 @@ Showing Labels/Selecting by Labels
   > kubectl get pods --show-labels
 
 
--labels can also be used as selectors, allowing filtering by labels
+Labels can also be used as selectors (-l), allowing filtering by labels
  
-  -L option will return ALL pods, displaying the labels provided as arguments to -L
-    > kubectl get pods -L creation_method,env
-      Will list all pods, and show all the creation method and env labels as columns
-
   -l option will filter and show only those pods that have the specified labels
+     You can use -l in two ways:
+       - with just a label 
+       - with a label=value
+
+     With -l label, you will get filter resources with that label regardless of the labels value
+     With -l label=value, you will filter resources with the label and value specified
+
     > kubectl get pods -l creation_method,env
-      Will show only pods that have creation_method and env labels (but will not show the labels)
+      Will get only pods that have creation_method and env labels (but will not show the labels)
 
     > kubectl get pod -l env 
-      Will show pods with the env label (regardless of value of env label)
+      Will get pods with the env label regardless of value of env label
 
     > kubectl get pod -l creation_method=manual,team=banking
-      Will select those pods with creation_method=manual and team=banking
+      Will get those pods with creation_method=manual and team=banking
       But will not show those labels
 
-   select pods that don't have a certain label, use single quotes and !
+     To select pods that don't have a certain label, use single quotes and !
     > kubectl get pod -l '!env'
       Will select pods that do not have the env label
 
+  -L option displays the specified label
+    To get alls pods while displaying the labels provided as arguments to -L
+    > kubectl get pods -L creation_method,env
+      Will list all pods, and show all the creation method and env labels as columns
+
   -L -l will select by label, and display the labels
     > kubectl get pods -l team=banking -L team
-      Will select pods labeled with team, and then list then showing the team values
+      Will select pods labeled with team=banking, and then list then showing the team values
 
 
 Select pods based on multiple values, use in|notin operator
@@ -419,108 +431,181 @@ you can also view the added annotation by kubectl describe
 
 
 Kubernetes Namespaces
-=====================
+---------------------
+-used for splitting objects into non-overlapping groups
+-ns provide scope for object names
+-by using namespaces, you can have objects with the same name
 
-There will be times when you want to be able to split your objects into separate non-overlapping groups
-so that you only perform operations inside one group at a time. This is where namespacing comes into play.
-Namespacing provides a scope for object names.
+Why do we need namespaces
+-allows for multi-tenancy, 
+-or for separating environments eg qa, dev, e2e, etc.
+-or some other functional grouping
+-resources can then be named the same, but in these different ns, they will not overlap/clash 
+ with each other
 
-Namespaces can also be used for multi-tenancy, or for separating environments eg qa, dev, e2e, etc.
+-namespaces do not provide isolation of the running objects. 
+-namespace only provides logical group distinction,
+-objects can still communicate across namespaces if there is not ioslation.
 
-So within different namespaces, objects can have the same name -- this may be useful.
-For example in complex systems, you want to split your components into smaller distinct groups.
-For example prod/pre-prod environments. So if you have a qal namespace and a prod namespace, the
-objects name have the same name in each of those namespaces.
-
+Some objects are not namespaced, for example the Node resource is universal
 Nodes do not reside in a namespace, they are global and not tied to a namespace.
 
-Kubectl commands for namespaces
 
+Commands for Namespaces
+-----------------------
 -to get all the name spaces
- > kubectl get ns
+  > kubectl get ns
 
-you will see that there is a default namespace, a kube-public and kube-system namespace.
+You will see that there are multiple namespaces
+- default namespace, 
+- kube-public 
+- kube-system namespace.
+
+By default, your commands will operate on the default namespace.
 
 -to get objects within a certain namepace
-> kubectl get pod --namespace kube-system
+  > kubectl get pod --namespace kube-system
 
-  will return all pods within the kube-system namepsace. It would make sense that objects used to 
-run kubernetes will reside in their own namepsace, and don't get returned when you are running
-your standard commands (which work for the default namespace), otherwise your the kube-system 
-objects would clutter all your return values
+    Will return all pods within the kube-system namepsace. 
+
+
+-Objects core to kubernetes runs in their own namepsace, and arent returned when 
+ you are running your standard commands (which work for the default namespace), 
+ otherwise kube-system objects would clutter all your return values
+
+-Namespaces can also be used to organize different user objects so that
+ they don't see each others objects, or collide object names (ex sample)
 
 Creating namespaces
-===================
-Namespaces are just another kubernetes resource, so they get created just like any other object, via
-a manifest file:
- 
-   apiVersion: v1
-   kind: Namespace
-   metadata:
-      name: custom-namespace
+-------------------
+Two ways to create namespaces
+-manifest file
+-kubectl command
 
+
+-like other resource, they can be created via manifest files
+ (all kubernetes objects have a corresponding API object that allows you
+  to create/read/update/delete by posting yaml manifest to the server)
+
+ eg custom-namespace.yaml
+ 
    > kubectl create -f custom-ns.yaml
      namespace "custom-namespace" created
 
+-or with a command:
+   > kubectl create namespace my-namespace
 
-You can also create namesapces with a command:
- > kubectl create namespace my-namespace
+There are rules for object names (RFC 1035 - domain names) 
+-namespaces may not conatin dots.
 
-There are rules for object names (RFC 1035 - domain names) but namespaces may not conatin dots.
+Switching namespace (context)
+-----------------------------
+To find your current context
+ > kubectl config current-context
+   minikube
+   
+   or if you are in your cluster, it will reflect your current ns
+   eg admin@t360-ns
+
+You can switch between namespaces with the command
+
+ kubectl config set-context $(kubectl config current-context) --namespace <namespace to switch to>
+   eg
+
+ > kubectl config set-context $(kubectl config current-context) --namespace ass-kick-ns
+
+   which switch to the namespace 'ass-kick-ns' and all kubectl commands will execute in that
+   context, until you switch back to default
+
 
 Creating resources in namespaces
-=================================
-When creatign objects, if you want to target a namespace, you can either declare the
-namespace in the object manifest, or in the create command
-> kubectl create -f my-manifest.yaml --namespace custom-namespace
+--------------------------------
+Objects can be created in specified ns by:
+ - specifying the namespace as part of the metadata section 
+ - targeting the namespace with --namespace or -n
+ - create the ns and then use the ns in the same manifest
+ 
+ kubia-manual-custom-namespace.yaml declares its own namespace
+ to confirm it was created in ninja-ns, first get the namespaces
+ to confirm the various ns
+   > kubectl get ns
+     // should show you all the ns, including default, kube-system, kube-public
+     // and others you created
+
+ then create the resource:
+   > kubectl create -f kubia-manual-custom-namespace.yaml
+
+
+ If the targeted ns does not yet exist, you will get an error.
+   -either create the ns manually or 
+   -you can add the ns declaration to the manifest
+   (see kubia-with-create-namespace.yaml)
+
+ To target creation of object into a namespace, use the parameter in the create command
+   > kubectl create -f my-manifest.yaml --namespace custom-namespace
+   > kubectl create -f my-manifest.yaml -n custom-namespace
+
 
 When working objects in a namespace, if you don't specify the namespace, it will be the default
-namespace, otherwise you need to specify it as part of your command.
+namespace, otherwise you need to specify it as part of your command parameter
+   > kubectl get pods --namespace <ns>
+     Will retrieve the pods from specified namespace, regardless of which ns you are currently in
+
+  The same parameter switch should work with other commands also
+
+
 
 Deleting objects
-================
-Likewise, if you want to delete objects in a certain namespace, you need to provide
-the namespace as a parameter, other wise it assumes it is in default.
+----------------
+You are always working in the default namespace, so your commands are
+targeted to that namespace.
 
-Switching namespaces
-====================
-You can switch between namespaces with the command
- > kubectl config set-context $(kubectl config current-context) --namespace <namespace to switch to>
- > kubectl config set-context $(kubectl config current-context) --namespace ass-kick-ns
-    which switch to the namespace 'ass-kick-ns' and all kubectl commands will execute in that
-    context, until you swtich back to default
+-to delete objects in other namespaces you should provide the ns as a parameter via 
+ --namespace 
+ -n
+ 
+-or switch context to that namespace
 
-
-Namespaces do not provide isolation of the running objects. 
-Namespace only provides logical group distinction,
-but objects can still communicate across namespaces if there is not ioslation.
 
 Deleting Namespaces
-===================
+-------------------
 A namespace is just another resource, so you should be able to delete them
  > kubectl delete ns <name>
 
+
 Deleting Pods
-=============
+-------------
+When you tell Kubernetes to delete a pod:
+- kubernetes will send a SIGTERM signal to the process and wait default (30 secs) 
+  time to allow the process to gracefully shut down. 
+- if not the pods is not dead by then, then it will send a SIGKILL signal
+- make sure your processes respond to SIGTERM to ensure graceful exits
+  (means you should application logic should handle this gracefully)
 
-To delete pods
-> kubectl delete pod <pod name>, <pod name2>, ...
+To delete pods by name:
+  > kubectl delete pod <pod name>, <pod name2>, ...
 
-Kubernetes will send a SIGTERM signal to the process and wait for (30 secs) default time to allow the process
-to gracefully shut down. If not, then it will send a SIGTERM signal
 
-You can use the label selector to delete pods with that label
-> kubectl delete pod -l creation_method=manual
- will delete all pods with that label and value.
+Use the label selector to delete pods with that label
+  > kubectl delete pod -l creation_method=manual
+    will delete all pods with that label and value.
 
-You can delete an entire namespace, and all resources in the namespace automatically
-> kubectl delete ns <namespace>
+Delete a namespace, and all resources in the namespace automatically
+  > kubectl delete ns <namespace>
 
-You delete all pods in a namespace
-> kubectl delete pod --all
+Delete all pods in a namespace but not the namespace (what abbout replica sets?)
+  > kubectl delete pod --all
+    This will just delete pods, but the rs may relaunch the pods again.
+
+Delete all rc/rs/pods/svc with
+  > kubectl delete all --all
+    This will ensure that new pods don't spin up again.
+    This will delete the Kubernetes Service object, but that will get recreated automatically.
+    This will not delete secrets or other config maps
+    
 
 Deleting replication controllers
-================================
+--------------------------------
 anything that was created by a replication controller will attempt to scale up to its desired size
 after a delete all command, so you have to delelete the replication controller as well
 > kubectl delete all --all
