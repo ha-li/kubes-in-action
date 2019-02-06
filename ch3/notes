@@ -3,6 +3,7 @@ All About Pods
 -creating pod manifests
 -delete pods
 -working with pods
+-describe pod
 -working with Logs in Kubernetes
 -setting up port-forwarding 
 -labels (creating, showing, selecting, modifying)
@@ -428,6 +429,9 @@ to add an annotation to an existing pod
 
 you can also view the added annotation by kubectl describe
  > kubectl describe pod <pod-name>
+
+You can also see the image that a pod is running by
+ > kubectl describe pod <pod name> | grep Image
 
 
 Kubernetes Namespaces
