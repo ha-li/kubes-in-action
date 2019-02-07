@@ -1,40 +1,52 @@
-Replication & Controllers: Managed Pods
-=======================================
+Replication Controllers, ReplicaSets: Managed Pods
+--------------------------------------------------
+-replication controllers (rc) + their commands (create, get, edit, describe, delete)
+-how labels affect rc replica count
+-change rc template (edit rc) 
+-horizontal scaling (scale rc)
+-replication sets (rs)
+-how kubernetes manages pods/keeps them alive (health checks)
+-healthcheck liveness probe 
+-exit codes + events to find out reason for failure
 
-in the real world, you would never create pods directly
--you would use either ReplicationControllers or Deployments, which then create the pod, plus manage the pod 
- directly for you
+In the real world, you would never create pods directly.
+When you create the pod directly, a node is selected to run the pod
+ then its containers are run in that pod, on that node. Kubernetes will 
+ - monitor the container, and 
+ - restart containers if they fail
 
--when you create the pod directly, a cluster node is selected to run the pod
- then its containers are run in that pod, in that node
--kubernetes will then monitor the container, and restart them if they fail
--but if the whole node is lost, the pods on those nodes are lost and will not be replaced
- with new ones
--if you use replication controllers or similar, they will manage the pod for you
--understanding how kubernetes uses these to monitor the containers to see if the container
- is still alive, and how kubernetes restarts them if they are not
+If the whole node is lost
+  -the pods on those nodes are lost and will not be replaced with new ones
+   (because the etcd key-value store does not hold pod details?)
 
-Keeping Pods Alive
-==================
+Use ReplicationControllers/ReplicaSets/Deployments, which 
+   - create the pod, plus 
+   - manage the pod 
+
+By using replication controllers or other pod managing objects, 
+  - they will manage the pod for you
+
+
+Kubernetes Declarative Model
+----------------------------
 kubernetes uses a declarative model where you state the desired state, and then
 let kubernetes do the necessary work to bring it to the desired state
 -if you want a pod to run, you declare so, and then let kubernetes pick the
- worker node, and run the pods containers on that node
+ worker node, and run the containers on that node
 
--if the container dies, kubelete on that node will run its containers and then from then
- on, keep them running as long as the pod exist
--if the processes main process crashes, the kubelet will restart the container
+-if the container dies, the node's kubelet will restart its containers 
+-if the main process in the container crashes, the kubelet will restart the container
 -if the application has a bug that crashes every once in a while, the kubelete will restart it
 -simply running a app in kubernetes will give it the ability to heal itself
 
-Liveness probes
-===============
+Liveness probes (Health Check)
+------------------------------
 kubernetes checks if a container is alive through a liveness probe
 -you can specify a liveness probe for each container in the pods spec
--kubernetes will periodically execute the probe an d restart the container if the probe fails
+-kubernetes will periodically execute the probe, restart the container if the probe fails
 
 -there are 3 mechanisms kubernetes does liveness probes
-   1. - http get on the containers ip address, port and path you specify in the manifest 
+   1. - http GET on the containers ip address, port and path you specify in the manifest 
         as long as the GET returns a 2xx or 3xx response, the probe is considered successful
       - if the probe doesn't respond, or it returns some other response, it is considered a 
         failure, and the container will restart
@@ -48,40 +60,79 @@ kubernetes checks if a container is alive through a liveness probe
         status
       - if the status code is 0, the probe is successful, otherwise all other codes are consider failures
 
-HTTP Get liveness probe
-=======================
-  An example of a yaml manifest that specifies the liveness probe:
+Each of these mechanisms have specific use case.
 
-  apiVersion: 1
-  kind: Pod
-  metadata:
-    name: kubia-liveness
-  spec:
-    containers:
-    - image: haja/kubia-unhealthy
-      name: kubia
-      livenessProbe:
-        httpGet:
-          path: /
-          port: 8080 
+HTTP Get liveness probe
+-----------------------
+-An example of a yaml manifest that specifies the liveness probe:
+  kubia-liveness-probe.yaml
+
+-This object specifies a liveness probe url, which kubernetes will start
+  shortly after the pod is up.
+-After 5 successful health checks, it will start to return 500, which is an unhealth 
+ response. Kubernetes will then restart the pod. 
+-You should be able to see the restart count with a get pod
+    
+ This runs a container called kubbia-unhealth that you have to build from the dockerfile in
+ directory nodeapp:
+   > cd nodeapp
+   > docker build -t kubia-unhealthy .
+  
+ Verify the image is in your docker images:
+   > docker images
+     ...
+     kubia-unhealthy
+
+ Tag the image (before you push to the hub)
+   > docker tag kubia-unhealthy haja/unhealthy
+
+ Push the image to docker hub
+   > docker push haja/unhealthy
+    (you should see an entry in your docker hub)
+
+ Create the docker pod:
+   > kubectl create -f kubia-liveness-probe.yaml
+
+ You should see your pod running.
+
+ Set up port-forwarding and then curl the host
+   > kubectl port-forward kubia-liveness 8080:8080
+   > curl localhost:8080
+     you've hit kubia-liveness
+
+ After 5 health checks + your requests, the response will be a 500, an 
+   unhealthy response, so kubernetes will go into action to restart it
+
+ Confirm with the restart count in get pods.
+
+ You can delete the pod:
+  > kubectl delete pod kubia-liveness
 
 Exit codes
-==========
+----------
 You can see why a container had to be restarted by looking at the content of the pods describe:
   > kubectl describe pod <pod name>
 
-  In the section Last State: you will see that it was terminated, and the reason, and the error code.
+  In the section "Last State:" 
+    you will see that it was terminated, and the reason, and the Exit Code.
 
-  the error code is alway the sume of the signal number sent to the process and 128. 
-  so if the error code is 137, the exit status is 137-128 = 9, which is SIGKILL, meaning the process was
-  killed forcibly
+    the Exit Code is alway the sum of the signal number sent to the process and 128. 
+    so if the error code is 137, the exit status is 137-128 = 9, which is SIGKILL, meaning the process was
+    killed forcibly
 
-  at the bottom of the descibe will be a listing of the events, 
-  it should show that kubernetes detected that the container was unhealthy, so it was killed and re-created.
-  when a container is killed, a new container is created, it is not the same container being restarted
+  at the bottom will be the "Events:" 
+     You will see  a listing of the events, 
+     It should show that kubernetes detected that the container was unhealthy, so it was killed and re-created.
+ 
+  When a container is killed, a new container is created, it is not the same container being restarted
+
 
 Health check parameters
-=======================
+-----------------------
+You can see the health check properties by:
+  > kubectl describe pod <pod name> | grep Liveness:
+    Liveness:       http-get http://:8080/ delay=0s timeout=1s period=10s #success=1 #failure=3
+
   the describe output will display information about the liveness probe such as:
    - the url/endpoint used
    - the delay
@@ -89,7 +140,7 @@ Health check parameters
    - the period, etc
    - failure count
 
-   the delay = 0 shows that the probe begins immediately after the container started
+   the delay - 0 shows that the probe begins immediately after the container started
    
    the timeout shows how long the probe will wait for a response before it timeouts and
    considers the probe failed
@@ -101,77 +152,80 @@ Health check parameters
  -all these parameters can be specified in the manifest
 
 InitialDelay
-============
+------------
     livenessProbe: 
       httpGet:
         path: /
         port: 8080
       initialDelaySeconds: 15
 
-    this specifies a delay of 15 seconds before the liveness probe starts
-    you always want to specify a delay to account for your applications start up time, otherwise you
+   -this specifies a delay of 15 seconds before the liveness probe starts
+   -you always want to specify a delay to account for your applications start up time, otherwise you
     will see that the probe kicks in right away, and it will fail, causing the process to be killed
     externally. This will be reflected in the exit code of 137 (SIGKILL) or 143 (SIGTERM).
 
-    Rules for Effective Health checks
-    =================================
-    for production pods, you should always define a liveness probe 
-      - a very simple probe will simply check if the server is responding
-      - for more complex liveness probes, you can configure specific path (eg /health) and
-        have the app perform internal status checks of vital components to ensure
-        none of them has died or is unresponsive (eg database, jms, other services)
-      - however, the health check should only check the internals of the app, and nothing influenced by
-        external app. for example if app fails to connect to the database, the liveness probe should
-        not fail. if the underlying database is the issue, restarting the app server/container will
-        not fix the problem, so your app will just restart repeatedly
-      - health checks should be fast (so that the timeout is small)
-      - health checks should not use a lot of computational resources
-        doing a health check should not slow down your container considerably 
-      - you want your health check to not require authentication 
-      - for java apps, you should make use of the http-get health check instead of
-        an exec probe. the exec probe would spin up a whole new jvm which is heavy weight and 
-        takes considerable computational resources
+  Rules for Effective Health checks
+  ---------------------------------
+  for production pods, you should always define a liveness probe 
+    - a very simple probe will simply check if the server is responding
+    - for more complex liveness probes, you can configure specific path (eg /health) and
+      have the app perform internal status checks of vital components to ensure
+      none of them has died or is unresponsive (eg database, jms, other services)
+    - however, the health check should only check the internals of the app, and nothing influenced by
+      external app. for example if app fails to connect to the database, the liveness probe should
+      not fail. if the underlying database is the issue, restarting the app server/container will
+      not fix the problem, so your app will just restart repeatedly
+    - health checks should be fast (so that the timeout is small)
+    - health checks should not use a lot of computational resources
+      doing a health check should not slow down your container considerably 
+    - you want your health check to not require authentication 
+    - for java apps, you should make use of the http-get health check instead of
+      an exec probe. the exec probe would spin up a whole new jvm which is heavy weight and 
+      takes considerable computational resources
 
-      - do not bother implementing retry loops in your probe, this is what the retry count is for
-      - even when you set the threshold to 1, kubernetes will retry multiple times before considering
-        it a failed attempt, so having your own retry loop is a wasted effort
+    - do not bother implementing retry loops in your probe, this is what the retry count is for
+    - even when you set the threshold to 1, kubernetes will retry multiple times before considering
+      it a failed attempt, so having your own retry loop is a wasted effort
 
-     Node failure
-     ============
-      - the restart of a pod/container is done by the kubelete on the node hosting the pod, this is not
-        done by the kubernetes control plane component
-      - when the entire node fails, the kubernetes control plane must create replacements for
-        all the pods in the node, however if you created the pod directly, these pods are not
-        controlled by anything except the kubelete, and since the kubelete runs on the node directly,
-        it will not be able to do anything if the node fails
-      - to make sure your app is restarted on another node, they pod needs to be managed by a 
-        replication controller or similar method
+    Node failure
+     ------------
+    - the restart of a pod/container is done by the kubelet on the node hosting the pod, this is not
+      done by the kubernetes control plane component
+    - when the entire node fails, the kubernetes control plane must create replacements for
+      all the pods in the node, 
+    - when you created the pod directly, these pods are not controlled by anything 
+      except the kubelet, and since the kubelet runs on the node directly, it will not be 
+      able to do anything if the node fails
+    - to make sure your app is restarted on another node, they pod needs to be managed by a 
+      replication controller or similar method
  
 
 Replication Controller
-======================
+----------------------
 In order to have your app restart on another node in the event of a node failure, you need
 to have your pod managed by a replication controller or other similar mechanism
 
-replication controllers are kubernetes resource that ensures pods are always kept running
--if the pod disappears for any reason, ex if the node disappears from a cluster or if the
- node is evicted from a cluster, the replication controller will notice the nissing pod, and 
- create a replacement pod
+replication controllers (rc) are 
+-resource that ensures pods are always kept running
+-if the pod disappears for any reason,the replication controller will 
+   -notice the nissing pod, and 
+   -create a replacement pod
+-if there are too many pods, the rc will scale down
 
 
-Replication Controllers will constantly monitor the list of running pods and make sure the actual
-number of pods of a "type" always match the desired number
- - if there are too few pods running, the rc will scale up to the desired number
- - if there are too many pods running, the rc will scale down 
+rc will constantly monitor the list of running pods and make sure the actual
+number of pods always match the desired number
+-based on the pods label selector
+
 
 Reasons why there may be more than the desired number of replicas
  - someone creates a pod of the same type
  - someone changes the type of an existing pod
  - someone descreases the desired number of pods
 
-How Replication Controllers work
-================================
 
+How Replication Controllers work
+--------------------------------
 Replication Controllers work based on the label selectors
 
 a replication controller has 3 parts
@@ -183,64 +237,57 @@ a replication controller has 3 parts
 -when you change the label selector or the pod template, it will not affect the existing pod, 
  instead it will affect new pods
 
--changing the label selector will cause the existing pods to drop out of scope with the
- replication controller, so the rc will stop caring about them, and instead create a new set
+   -changing the label selector will not affect existing pods:
+      -existing pods will drop out of scope of the rc (and continue to run? or get cleaned up)
+      -rc will create a new set
 
--changing the pod template likewise will have no affect on the current pods, it will instead
- create new pods based on the new template when the need arises. the rc does not actually
- care about or monitor the pod contents after the pod has been created
+   -changing the pod template has no affect on the current pods, 
+      -rc will create new pods based on the new template when the need arises. 
+      -the rc does monitor the create pod contents after the pod has been created
 
-Replication Controllers provide very powerful features like
--being able to create new pods when an existing one disappears
--when a node fails, any pods under control by rc will be replaced
+rc provide very powerful features like
+-creating new pods when an existing one disappears
+-node failures -> pods managed by rc will be replaced
 -allows horizontal scaling both manual and automatic
 
 Pods are never moved, but rather a new one is created.
 
 Template for a Replication Controller
-=====================================
-  apiVersion: 1
-  kind: ReplicationController
-  metadata:
-    name: kubia
-  spec:
-    replicas: 3
-    selector:
-      app: kubia
-    template:
-      metadata: 
-        labels: 
-          app: kubia
-      spec:
-        containers:
-        - name: kubia
-          image: haja/kubia
-          ports:
-            - containerPort: 8080
+-------------------------------------
+see kubia-rc.yaml for a basic rc template
 
-When such a manifest is submitted to the API Server, a replication controller
-resource gets created with the name kubia
+To create the rc with the pod:
+   kubectl create -f kubia-rc.yaml
+
+The rc created is named kubia
 -the replica count is set to 3, 
--the 3 pods created will use the pod template provided with the label selector
- as specified "app=kubia"
--the pod labels will match the label selector of the replication controller
- otherwise the replciation controller will keep spinning up new pods
- until the replica matches the count and the label selector matches
--not specifying a label selector is also an option, in which case, it will be
- configured automatically from the labels in the pod template
--it is actually recommended that you not specify a label selector for the replicat
- controller, and instead let the labels be extracted from the pod template
+-the 3 pods created will use the pod template provided with 
+  label selector "app=kubia"
+-the pod labels will match the label selector of the rc
+-the rc will keep spinning up new pods until replica matches count and label selector matches
+-not specifying a label selector is an option, kubernetes will
+ configured rc label selector from the labels in the pod template
+
+Best practice: do not specify a label selector for the rc`
+ instead let the labels be extracted from the pod template
+  - keeps the yaml definition simple
 
 Replication Controller commands
-===============================
+-------------------------------
 
 You can get the replication controller resources as
  > kubectl get rc
+ > kubectl get replicationcontroller
 
- this is analogous to get pod
+You should see the name of the rc, its desired and current count, ready count + age of rc
+
+You can see the details of a rc:
+ > kubectl describe rc <rc name>
+
+   You should see the Events at the bottom showing the number of pods created
 
 Replication Controller in Action
-=================================
+---------------------------------
 once the replication controller has been created,
 you should be able to see all the replica pods it has created
  
@@ -256,7 +303,7 @@ create a new pod
  pod will have a "Terminating" status
 
 Replication Controller Information
-==================================
+----------------------------------
 You can see the rc information using
  > kubectl get rc
 
@@ -284,11 +331,14 @@ you can also describe the rc to get additional information about the rc
   - the events for that rc
 
 How the Replication Controller works
-====================================
+------------------------------------
 
 When a pod managed by the rc is deleted, the rc will be notified.
 When the rc is notified of a deletion, the rc will check the actual number
 of pods against the desired count, and take appropriate action
+ - so it is not the deletion of a pod that triggers a new pod creation
+ - the rc first has to check the current count against the desired count
+   and when those don't match, that is what triggers a new pod creation
 
 Likewise when you lose an entire node, if the pods on the node are 
 managed by replication controllers, then kubernetes will
@@ -308,33 +358,36 @@ automatically spawn new pods for you in different nodes
 
 
 Moving Pods in/out of scope of ReplicationController
-====================================================
-pods that are created by a rc are not bound to the rc in anyway,
-rc manage the pods that match its label selector
- - if you change the labels of the pod, the pod no longer matches the
-   rc, and the rc will stop seeing that pod. the pod has fallen out
-   of scope. when a pod falls out of scope of the rc, the rc 
-   will try to bring itself back to compliance with its replica count
+----------------------------------------------------
+Pods that are created by a rc are not bound to the rc in anyway,
+ - rc manage the pods that match its label selector, regardless of who created the pod
+ - if you change the labels of the pod, the pod no longer matches the rc, the pod has
+   fallen out of scope to the rc, it is no longer managed by anything, so if the node
+   it is running on fails, it will not be rescheduled 
+ - the rc will try to bring itself back to compliance with its replica count
  - in the same way, you can change an existing pods label so that it
    now matches the rc label selector
+ - you can see which resource owns the pod by get pod -o yaml | more, look
+     at the ownerReferences, you can see the resource that owns the pod
+      - if the pod was created without a rc/rs, there will be no ownerReference
   
    assume you have a rc with pods labeled app=kubia
    > kubectl get pods --show-labels
 
   NAME          READY     STATUS    RESTARTS   AGE       LABELS
-  kubia-kl997   1/1       Running   0          35m       app=kubia
-  kubia-v6qjb   1/1       Running   0          51m       app=kubia
-  kubia-xxtd5   1/1       Running   0          1h        app=kubia
+  kubia-kl997   1/1       Running   0          35m       app-kubia
+  kubia-v6qjb   1/1       Running   0          51m       app-kubia
+  kubia-xxtd5   1/1       Running   0          1h        app-kubia
 
-  then you launch another pod:
+  then you launch another pod without a label:
    > kubectl create -f kubia.yaml
 
    > kubectl get pods --show-labels
      NAME          READY     STATUS    RESTARTS   AGE       LABELS
      kubia         1/1       Running   0          9s        <none>
-     kubia-kl997   1/1       Running   0          37m       app=kubia
-     kubia-v6qjb   1/1       Running   0          53m       app=kubia
-     kubia-xxtd5   1/1       Running   0          1h        app=kubia 
+     kubia-kl997   1/1       Running   0          37m       app-kubia
+     kubia-v6qjb   1/1       Running   0          53m       app-kubia
+     kubia-xxtd5   1/1       Running   0          1h        app-kubia 
 
   you see that the manually launched kubia has no label
  
@@ -353,7 +406,7 @@ rc manage the pods that match its label selector
    exceeded, one of the pods will terminate, which is what we see above
 
 Changing the labels of managed pods
-===================================
+-----------------------------------
 If you add a new label to existing pods managed by rc, it will not affect the
 replica count or the pods, since the pods still are in scope of the rc label
 selector
@@ -361,7 +414,6 @@ selector
  > kubectl label pod kubia-kl997 type=special
  
  > kubectl get pods --show-labels
-
    NAME          READY     STATUS    RESTARTS   AGE       LABELS
    kubia-kl997   1/1       Running   0          44m       app=kubia,type=special
    kubia-v6qjb   1/1       Running   0          1h        app=kubia
@@ -390,13 +442,19 @@ Removing pods from the scope of a rc is handy when you want to debug/troubleshoo
 a particular pod, for example a bug has been identified in that pod, or if the
 pod started to behave eradictly. once down, you can delete the pod
 
+You can also change a rc label selector
+-doing so the existing pods will remain as is and continue to live
+-the rc now does not match any pods labels, so it is out of sync with its replica count
+-the rc will spin up new pods until the count matches
+-it is not common to need to change the rc label selector
+
 Changing a Controllers pod template
-===================================
+-----------------------------------
 A rc pod template can be modified at any time.
-changing the pod template is like changing the mold of the rc,
-it will only affect newly created pods, not the existing pods.
-the existing pods will also continue to be in scope of the
-rc since scope is determined by the label selectors
+-changing the pod template is like changing the mold of the rc,
+-it will only affect newly created pods, not the existing pods.
+-the existing pods will also continue to be in scope of the
+ rc since scope is determined by the label selectors
 
  to change the rc pod template:
  > kubectl edit rc kubia
@@ -409,21 +467,21 @@ rc since scope is determined by the label selectors
  you can add metadata (such as new label), change the container image,etc
 
 Horizontally scaling a rc
-=========================
+-------------------------
 you can scale up or down a rc by stating the new replica size
  
- > kubectl scale rc kubia --replicas=10
+ > kubectl scale rc kubia --replicas-10
 
 or you can edit the rc template
 
  > kubectl edit rc kubia
 
-   then change the replica section
-   saving and exiting the editor will save the rc info, and it will adjust accordingly.
+  - then change the replica section to increase 3 to 10
+  - saving and exiting the editor will save the rc info, and it will adjust accordingly.
 
 
 Deleting a Replication Controller
-=================================
+---------------------------------
 there are two ways to delete a rc
  1. deleting the rc and also deleting the pods associated to it
  2. deleting just the rc and leaving the pods
@@ -435,7 +493,7 @@ when you delete the rc using
 
  
 If you add a parameter --cascade=false, then only the rc will be deleted
- > kubectl delete rc kubia --cascade=false
+ > kubectl delete rc kubia --cascade-false
 
    
 Now if you want, you can create another rc with the same label selector and
@@ -443,40 +501,35 @@ the pods will fall right back into scope
  > kubectl create -f kubia-rc.yaml
 
 ReplicaSet
-==========
+----------
 are the next generation of replication controllers
 -behave almost exactly like a replication controller but has more expressive pod selector
 -still common to see replication controllers in production
 -replication controllers match pods according to certain label
--replication sets allow matching of pods that lack certain labels or pods that include certain label regardless of value
--replication sets can also match pods where label env=prduction and env=development at the same time, rc cannot do this
+-replicasets allow matching of
+     pods that lack certain labels or 
+     pods that include certain label regardless of value
+-replication sets can also match pods with labels env=prd and env=dev at the same time, rc cannot do this
 -replication sets can also match pods based on the presence of a label, regardless of its value ie env=*
 
-Always use replica sets over replicationcontrollers, but you will find other people still using replciation controllers.
+
+Try to use rs, but it is still common to see rc
 
 Defining a ReplicationSet
-=========================
-apiVersion: apps/v1beta2
-kind: ReplicaSet
-metadata:
-  name: kubia
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: kubia
-  template:
-    metadata:
-      labels:
-        app: kubia
-    spec:
-      containers:
-      - name: kubia
-        image: haja/kubia
+-------------------------
+ kubia-replicaset.yaml is a manifest of a replicaset.
+ 
+To create it:
+  > kubectl create -f kubia-replicaset.yaml
 
+To get rs:
+  > kubectl get rs
+
+To describe rs:
+  > kubectl describe rs
 
 Expressive label selectors
-==========================
+--------------------------
 -replicasets (rs) have a more expressive label selector than rc
 -for example you can use "matchExpressions" for better expressions:
 
@@ -498,13 +551,13 @@ Operators that can be used in replication sets:
           not be specified
 
 Deleting ReplicaSets
-====================
+--------------------
 Delete a ReplicaSet like you would a replication controller
 
  > kubectl delete rs kubia
  
 DaemonSet
-=========
+---------
 A daemon set is used to run 1 pod on each of the nodes
 -typical use case is for deploying infrastructure-related pods that need to run on each node,
  for example a log collector, resource monitort, kube-proxy process
@@ -520,7 +573,7 @@ A daemon set is used to run 1 pod on each of the nodes
 
 
 Using DaemonSets to run pods on a subset of nodes
-=================================================
+-------------------------------------------------
 -you can use a daemon set to run the pod on a certain subset of the nodes by specifying
  a node-selector property in the pod template, which is also part of the
  daemonset definition
@@ -533,16 +586,16 @@ Labeling Nodes
  > kubectl get node
 
  to add a label to a node
- > kubectl label node <node name> key=value
+ > kubectl label node <node name> key-value
    
-  eg  kubectl label node minikube disk=ssd
+  eg  kubectl label node minikube disk-ssd
 
  > to change an existing label on a node, specify the --overwrite parameter
-   > kubectl label node minikube disk=hdd --overwrite
+   > kubectl label node minikube disk-hdd --overwrite
 
  
 Defining a DaemonSet
-===================
+-------------------
 apiVersion: apps/v1beta2
 kind: DaemonSet
 metadata:
@@ -564,7 +617,7 @@ spec:
  
 
 DaemonSet operators
-===================
+-------------------
 To create a daemon set, create the yaml file and then create a resource like all other resource
 > kubectl create -f ds.yaml
 
@@ -572,14 +625,14 @@ To get the list of daemonsets
 > kubectl get ds
 
   NAME          DESIRED   CURRENT   READY     UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-  ssd-monitor   0         0         0         0            0           disk=ssd        17s
+  ssd-monitor   0         0         0         0            0           disk-ssd        17s
 
 to delete a daemonset
 > kubectl delete ds ssd-monitor
 
 
 Jobs
-====
+----
 Jobs are special resources that run once, and once completed, does not get restarted again.
 -jobs are similar to other resources, except that the pod it runs in, once completed, does not
  get restarted again
@@ -645,7 +698,7 @@ To get rid of the job, you have to delete it
 
 
 Running multiple pod instances in a Job
-=======================================
+---------------------------------------
 
 Jobs can be configured to run more than once. Set the completions to how many
 times you want to the job pod to run
@@ -688,7 +741,7 @@ Note that the age of the pods show that they clearly were created sequentially.
 And if one of the pods fail, then a new one will be created to complete what it started.
 
 Running Pods in Parallel
-========================
+------------------------
 
 Pods can also be run in parallel.
 
@@ -725,7 +778,7 @@ So there will be 2 sets of 2, and 1 set of 1
 > kubectl get pods
 
 You can scale the parallel jobs (and the serial jobs) by:
-> kubectl scale job parallel-batch-job --replicas=3
+> kubectl scale job parallel-batch-job --replicas-3
 
 this will scale up the current run to 3, and then only 2 more needs to run.
 
@@ -737,20 +790,20 @@ parallel-batch-job-f6xxv   0/1       Completed   0          4m
 parallel-batch-job-z54mf   0/1       Completed   0          4m
 
 Limiting time for job to run
-============================
+----------------------------
 You can limit how long a job runs by specifying in the metadata of the manifest:
  activeDeadlineSeconds 
 when the job runs longer than that, the pod will terminate and the job will
 be marked as failed
 
 BackOffLimit
-============
+------------
 spec.backoffLimit specifies how many times to retry before being marked as failed.
 If not specified, it defaults to 6
 
 
 CronJobs
-========
+--------
 kubernetes supports cron jobs, allowing you to run a job in the future or 
 repeatedly at a specified interval
 
@@ -779,7 +832,7 @@ Job resources will be created at approximately the scheduled time.
 The Job will then create the pods.
 
 Starting Deadline
-=================
+-----------------
 If you cronjob is time critical, you can set a deadline in seconds, 
 after which, if cron has not kicked off the job yet, it will be marked as failed:
 

@@ -2,11 +2,12 @@ All About Pods
 --------------
 -creating pod manifests
 -delete pods
+-working with logs
 -working with pods
 -describe pod
 -working with Logs in Kubernetes
 -setting up port-forwarding 
--labels (creating, showing, selecting, modifying)
+-labels (showing, creating, showing, selecting, modifying, overwriting)
 -node selectors using labels
 -pod annotations
 -namespaces (create, working with, targeting objects to, switching, deleting objects in)
@@ -227,6 +228,11 @@ Kubernetes allows you to see the log file contents by:
   kubectl logs only show current log file.
 
 
+  logs are only shown for the current pod/container. If you want the previous
+  container (if it was restarted) then you need to specify it:
+    > kubectl logs <pod-name> --previous
+
+
 If you pod container multiple containers, you have to specify the container name
  > kubectl logs <pod-name> -c <container>
  > kubectl logs kubia-manual -c kubia
@@ -297,7 +303,7 @@ Labels will be visible to all person with access to that cluster
   Create the above kubia-manual-with-labels.yaml
   > kubectl create -f kubia-manual-with-labels.yaml
 
-  Show the pod details with labels exposed
+  Show the pod details with all labels exposed
   > kubectl get pods --show-labels
 
 
@@ -347,6 +353,8 @@ Add a label to an existing pod using the "label" command:
     this will add creation_method label of kubia-manual to be manual
 
 Overwrite an existing label by:
+  If this pod has a env label already, to change its value to a new value, you have to
+  use overwrite
   > kubectl label pod kubia-manual-v2 env=debug --overwrite
 
 
