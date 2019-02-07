@@ -4,10 +4,12 @@ Replication Controllers, ReplicaSets: Managed Pods
 -how labels affect rc replica count
 -change rc template (edit rc) 
 -horizontal scaling (scale rc)
--replication sets (rs)
--how kubernetes manages pods/keeps them alive (health checks)
--healthcheck liveness probe 
--exit codes + events to find out reason for failure
+-replication sets (rs) and the commands (create, describe, get, delete, edit)
+-expressive selectors for replicasets
+-daemonsets (for replica of 1 on each node)
+-jobs eg batch (manifest, create, get, describe etc)
+-cron jobs
+
 
 In the real world, you would never create pods directly.
 When you create the pod directly, a node is selected to run the pod
@@ -532,6 +534,7 @@ Expressive label selectors
 --------------------------
 -replicasets (rs) have a more expressive label selector than rc
 -for example you can use "matchExpressions" for better expressions:
+  eg: kubia-rs-with-matchexp.yaml
 
   selector:
     matchExpressions:
@@ -540,7 +543,17 @@ Expressive label selectors
         values: 
           - kubia
 
- this selects pods containing a label with key "app" and hte value must be "kubia"
+ this selects pods containing a label with key "app" and the value must be "kubia"
+
+To create this rs:
+  > kubectl create -f kubia-rs-with-matchexp.yaml
+
+To compare the difference in the selector of these two:
+   > kubectl describe rs kubia | more
+   > kubectl describe rs kubia-rs | more
+
+   the kubia selector is app=kubia, the kubia-rs selector is app in (kubia)
+
 
 Operators that can be used in replication sets:
  - In - labels value must match one of the specified
@@ -555,22 +568,57 @@ Deleting ReplicaSets
 Delete a ReplicaSet like you would a replication controller
 
  > kubectl delete rs kubia
+
+ This should delete the rs and the pods it controls
+
  
 DaemonSet
 ---------
-A daemon set is used to run 1 pod on each of the nodes
+ eg ssd-daemonset.yaml
+
+ create a daemonset resource like others:
+ > kubectl create -f ssd-daemonset.yaml
+
+ To see the ds
+ > kubectl get ds
+
+ To describe:
+ > kubectl describe ds 
+
+ This runs a ds on nodes that are labelled disk=ssd.
+ - to see the ds launch the pod, you need to label your minikube with disk=ssd
+   > kubectl label node minikube disk=ssd
+
+     This should kick off the ds.
+
+   To kill the ds pod, relabel the node 
+   > kubectl label node minikube disk=hdd --overwrite
+ 
+     This will overwrite the label, and kill the 1 pod in the ds
+
+   To delete a ds
+   > kubectl delete ds <ds name>
+
+
+A daemonset is used to run 1 pod on each of the nodes
 -typical use case is for deploying infrastructure-related pods that need to run on each node,
- for example a log collector, resource monitort, kube-proxy process
+ eg a log collector, 
+    resource monitor, 
+    kube-proxy process
+
 -in a non-kubernetes cluster, these kinds of infrastructure would be run as part of the 
  node boot up process, but on kubernetes, you can take advantage of restarts, auto deployment etc
 
 -a daemon set will create as many pods as there are nodes. So if a node is destroyed, 
  the daemon set will not restart the pod on another pod, but as soon as a new node is added,
  that pod will launch on the new node
+
 -the daemon set has no concept of a replica count. it will only ensure that each node
- will have a such pod by making sure that the a pod running its pod selector is running
+ will have a such pod by making sure that the a pod running its selector is running
  on each node
 
+-if a node goes down, the daemonset doesn't create a new pod somewhere else, but once
+ a new node goes up, the daemonset ensures its pod is also created on the new node
 
 Using DaemonSets to run pods on a subset of nodes
 -------------------------------------------------
@@ -594,53 +642,16 @@ Labeling Nodes
    > kubectl label node minikube disk-hdd --overwrite
 
  
-Defining a DaemonSet
--------------------
-apiVersion: apps/v1beta2
-kind: DaemonSet
-metadata:
-  name: ssd-monitor
-spec:
-  selector:
-    matchLabels:
-      app: ssd-monitor
-  template:
-    metadata:
-      labels:
-        app: ssd-monitor
-    spec:
-      nodeSelector:
-        disk: ssd
-      containers:
-      - name: main
-        image: luksa/ssd-monitor
- 
+Jobs (for batches)
+------------------
+Jobs are special resources that run, and once completed, does not restart
+- jobs are similar to other resources, except that the pod it runs in, 
+  once completed, does not get restarted again
 
-DaemonSet operators
--------------------
-To create a daemon set, create the yaml file and then create a resource like all other resource
-> kubectl create -f ds.yaml
+- when the node fails before the job completes, the job gets rescheduled to another node
+- if the process fails during its run, it can be configured to either restart the container, or not
 
-To get the list of daemonsets
-> kubectl get ds
-
-  NAME          DESIRED   CURRENT   READY     UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-  ssd-monitor   0         0         0         0            0           disk-ssd        17s
-
-to delete a daemonset
-> kubectl delete ds ssd-monitor
-
-
-Jobs
-----
-Jobs are special resources that run once, and once completed, does not get restarted again.
--jobs are similar to other resources, except that the pod it runs in, once completed, does not
- get restarted again
--when the node fails before the job completes, then the job will be rescheduled to another node
- just like a replica set
--if the process fails during its run, it can be configured to either restart the container, or not
-
--jobs are juseful for adhoc tasks where the task needs to be completed, you could run this in an 
+-jobs are useful for adhoc tasks where the task needs to be completed, you could run this in an 
  unmanaged pod, and then wait for it to finish, but then you have to:
    - wait for it to complete
    - if a node fails, you have to manually recreate it
@@ -650,21 +661,7 @@ Jobs are special resources that run once, and once completed, does not get resta
 Creating a Job
 --------------
 In the yaml definitition, the kind is Job
-
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: batch-job
-spec:
-  template:
-    metadata:
-      labels:
-        app: batch-job
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: main
-        image: luksa/batch-job
+  eg batch-job.yaml
 
 In a batch job definition, you have to specify what kubernetes should do when the
 process running in the container finishes
@@ -672,6 +669,10 @@ process running in the container finishes
  - in a normal pod, this is set to Always, but Jobs cannot have Always
  - Job restartPolicy should either be OnFailure, or Never, this is what prevents
    the job pod from restarting on failure
+
+
+To create the job:
+ > kubectl create -f batch-job.yaml
 
 To see the job
  > kubectl get job
@@ -685,7 +686,9 @@ To see the Job running
    kubia-gw2sr       1/1       Running     0          1d
 
 On the job completes, you should see the status in Completed
- > kubectl get pods 
+After two minutes in Completed, the pod will not show up in 
+normal pod listing. You have to add --show-all (or -a)
+ > kubectl get pods  --show-all
    NAME              READY     STATUS      RESTARTS   AGE
    batch-job-bjk94   0/1       Completed   0          6m
    kubia-gw2sr       1/1       Running     0          1d
@@ -699,25 +702,11 @@ To get rid of the job, you have to delete it
 
 Running multiple pod instances in a Job
 ---------------------------------------
-
 Jobs can be configured to run more than once. Set the completions to how many
 times you want to the job pod to run
+ 
+  see multi-completion.yaml
 
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: multi-completion-batch-job
-spec:
-  completions: 5
-  template:
-    metadata:
-      labels:
-        app: batch-job
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: main
-        image: luksa/batch-job
 
 This manifest will trigger 5 pods, created one after another.
 Once the first pod is created, and completes, it's status goes to Completed.
@@ -745,25 +734,10 @@ Running Pods in Parallel
 
 Pods can also be run in parallel.
 
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: parallel-batch-job
-spec:
-  completions: 5
-  parallelism: 2
-  template:
-    metadata:
-      labels:
-        app: batch-job
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: main
-        image: luksa/batch-job
+ eg: parallel-batch.yaml
 
 Once created:
- > kubectl create -f parallel.yaml
+ > kubectl create -f parallel-batch.yaml
 
 You can see the 2 pods running at the same time:
 > kubectl get pods
@@ -810,23 +784,7 @@ repeatedly at a specified interval
 -the kind will be CronJob
 -the spec.schedule will be a cron expression
 
-apiVersion: batch/v1beta1
-kind: CronJob
-metadata: cron-batch
-  name: batch-job-interval
-spec:
-  schedule: "0,15,30,45 * * * *"
-  jobTemplate:
-    spec:
-      template:
-        metadata:
-          labels:
-            app: periodic-batch-job
-        spec:
-          restartPolicy: OnFailure
-          containers:
-          - name: main
-            image: luksa/batch-job
+  eg: cron-batch.yaml
 
 Job resources will be created at approximately the scheduled time.
 The Job will then create the pods.
@@ -836,24 +794,7 @@ Starting Deadline
 If you cronjob is time critical, you can set a deadline in seconds, 
 after which, if cron has not kicked off the job yet, it will be marked as failed:
 
-apiVersion: batch/v1beta1
-kind: CronJob
-metadata: cron-batch
-  name: batch-job-interval
-spec:
-  schedule: "0,15,30,45 * * * *"
-  startingDeadlineSeconds: 15
-  jobTemplate:
-    spec:
-      template:
-        metadata:
-          labels:
-            app: periodic-batch-job
-        spec:
-          restartPolicy: OnFailure
-          containers:
-          - name: main
-            image: luksa/batch-job
+  eg: cron-deadline.yaml
 
 Cron is not perfect
 -at times it will create 2 jobs instead of 1 or miss creating a job
