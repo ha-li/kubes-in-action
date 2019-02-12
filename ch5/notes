@@ -1,45 +1,77 @@
-topics in ch5
--the main theme of ch5 is services
+-the main theme of ch5 is Services
+
 -topics include:
  * exposing groups of pods as single ip using Service resource
      - creating services
-     - session affinity services
-     - multi-port services
+          - service label selectors
+          - port spec
+
+ * session affinity (SA) services
+     - ClientIP
+     - None
+     - No cookie-based SA
+
+ * multi-port services
+    - Services with more than 1 port open
+
+ * Named Ports
+    - using names in specs 
+
+ * to run a command inside a pod to hit a cluster ip service
+   (Testing the Service)
+
+ * Cluster IP (Listing Services)
+
  * services discovery in the cluster
+     - env variable vs dns
      - external service resources
      - endpoint resources
      - external name alias
+
+ * Endpoints
+
  * exposing services to external clients
      - using service type - nodeport
      - using service type - loadbalancer
      - using ingress resource
+            -multipath
+            -multi hosts
+
+ * Readiness Probes
+    - Liveness Probes (in ch4)
+    - controlling pod readiness as part of a service
+
  * finding/connecting to external services
- * controlling pod readiness as part of a service
  * trouble shooting services
+ * Headless Services
+      - why you need them
+      - how to implement them
+ 
+ * Discovering not ready pods
 
 
+
+Why do we need Services
+-----------------------
 Most applications are meant to respond to external requests
  eg: http requests coming from outside pods or 
      events from external infrastructure (jms)
 
-
 In order to be able to consume other services an application must
 be able to find those pods
- - in the old non-kubernetes world, a sys admin would be able to 
-   configure each client app by specifying the exact ip address 
-   or dns of the host
- - in kubernetes this is not possible because 
+ - in non-kubernetes world, a sys admin would configure each client app 
+   by specifying the ip address or dns of the host
+ - in kubernetes this is not possible:
    * pods are constantly moving around (ephemeral)
    * horizontal scaling means multiple pods provide the same service
    * ips are assigned after the pod has been schedule to a node so
      clients will not know the ip address of the server up front
 
-- to solve for this, kubernetes introduces the concept of a 
-  Service resource
+- to solve for this, kubernetes introduces the concept of a Service resource
 
 Kubernetes Service
-==================
-A Kubernetes Service is a resource you create that provides a single
+------------------
+Service is a resource you create that provides a single
 and consistent point of entry to a group of pods that do the same thing
 - each service ip and port never changes while the service exists
 - clients can connect to that ip and port to get access to the service
@@ -52,32 +84,27 @@ a concrete example of this is a cluster of front end (ui) pods needing to
 connect to a back end database server
 - external clients need to be able to connect to the ui pods without concern
   if there is only 1 or hundreds of instances of the front end
+
 - the front end pods need to connect to the back end database, but since
   the database is running inside a pod, it may be moved around the cluster
   any time, so its ip address may change, you want to allow this, without
   having to reconfigure the front end pods each time the backend moves
+
 - so it this case there will be two services, one load balancing the front end
   and one in front of the database
+
 
 Creating Services
 -----------------
 -client connections to the Service are load balanced across the pods of a Service
--individual pods are set to a Service by the use of label selectors
+-individual Pods are set to a Service by the use of label selectors
 -Service resources are created just like any other kubernete resources, via a file 
  manifest
 
  eg: kubia-svc.yml
 
-apiVersion: v1
-kind: Service
-metadata:
-   name: kubia-svc
-spec:
-   ports:
-   - port: 80
-     targetPort: 8080
-   selector:
-     app: kubia
+ To create a service resource from a manifest file:
+  > kubectl create -f kubia-svc.yaml
 
 -from the manifest: 
   * the kind is Service
@@ -92,14 +119,16 @@ Listing Services
 ----------------
 to get the listing of services in you namespace
 
-$ kubectl get svc
+> kubectl get svc
   NAME         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
   kubernetes   ClusterIP   10.96.0.1       <none>        443/TCP   19d
   kubia        ClusterIP   10.99.161.109   <none>        80/TCP    1d
 
-The cluster ip is what pods inside the cluster connect to, so if your client is
-a part of this cluster and would like to use the service kubia, it will
-use the ip 10.99.161.109, port 80
+  - cluster ip is the ip inside the cluster
+    - use this ip when you are inside the cluster to test a service etc
+    - pods inside the cluster connect to the Service using this ip, 
+    - clients running inside the cluster also should use the cluster ip 
+      (10.99.161.109, port 80)
 
 For pods that are external to the cluster, they need to use the external ip,
 which is covered later on
@@ -113,15 +142,16 @@ several ways to test the service:
 - create a client pod that will send a request to the service ip address
   and log the response of the service, you can then examine the pods log
 - ssh into the kubernetes nodes and use the curl command
+
 - execute the curl command inside an existing pod using the 'kubectl exec' 
   command
   
   eg of executing the curl command inside an existing pod:
 
-  $ kubectl exec kubia-7nadol -- curl -s http://10.99.161.109
+  > kubectl exec kubia-7nadol -- curl -s http://10.99.161.109
   You've hit kubia-aawezg
 
-the kubectl exec command allows you to run a command inside a kubernetes 
+"kubectl exec" allows you to run a command inside a kubernetes 
 pod remotely. As long as you have kubectl installed, you issue
 kubectl exec with the pod you want to use, and then the command
 you want to run inside the pod
@@ -143,101 +173,75 @@ kubectl exec is analogous to ssh into a pod, and then issuing the command
 inside the pod, but done remotely in a elegant fashion for the user
 
 
-Service Affinity Configuration
-------------------------------
-In a normal service, the load balancer randomly selects a pod
-each time.
+Service Affinity Configuration (Stickiness)
+-------------------------------------------
+A normal service, the load balancer randomly selects a pod each time.
 
-A Service resource can be configured to be sticky with a simple 
-configuration in the manifest
+Service resource can be configured to be sticky with a simple configuration in the manifest
+-in the spec definition add sessionAffinity
 -sticky services will remember which pod was selected for each
  client, and remember reuse the same pod for that client
 
- apiVersion: v1
- kind: Service
- spec:
-   sessionAffinity: ClientIP
- ...
+ (see kubia-sa-svc.yaml)
 
 -this configuration will make the service proxy all requests 
 originating from the same client to the same pod.
 
-kubernetes does not support stickiness through cookie-based
-sessions because cookies are built on top of http
--kubernetes session affinity does not operate the the http level
--services deals with tcp/udp packets and do not care about the
- payload they carry
+-kubernetes supports 2 types of session affinity (SA): 
+     - ClientIP and 
+     - None
+  - services deals with TCP/UDP packets & do not concern themselves with the payloads
+  - kubernetes session affinity does not operate at HTTP level
+  - kubernetes does not support cookie-based sessions
+    because cookies are built on top of http
 
 
 Multi-Port Services
 -------------------
--a normal service exposes only 1 port, but you can configure 
- multi-port services, 
-   ex if your pod application listens on both 80 and 443 
-      you could create a service to listen to 8080 for http, 
-      8443 for https and have the service forward to 
-      80 and 443 on the pods
+MultiPort Service is a Service that binds to more than 1 port.
 
--creating multi-port service is done through configurating
- the manifest:
+-normal service exposes only 1 port, typically 
+    443 targeting 8443 (ie the world sees 443 on the Service which targets 8443 on the Pods)
 
- apiVersion: v1
- kind: Service
- metadata: 
-   name: kubia
- spec:
-   ports:
-     - name: http
-       port: 80
-       targetPort: 8080
-     - name: https
-       port: 443
-       targetPort: 8443
-     selector: 
-       app: kubia
+-you can configure multi-port services, 
+   ex if your pod listens on both 80 and 443 you could create a Service -> Pod
+      8080 (http) -> 80
+      8443 (https) -> 443
 
- this service exposes 2 ports, and applies the service to 
- any pods with app=kubia labels
+-creating multi-port service is done through configurating the manifest 
+ eg: (kubia-multiport-svc.yaml)
+   
+  > kubectl create -f kubia-multiport-svc.yaml
+
+    this service exposes 2 ports, and applies the service to 
+    any pods with app=kubia labels
 
 
 Named Ports
 -----------
 When defining the ports on your pod, you can give them names
+- then you can use the names in your Service spec 
+  
+  eg: kubia-named-svc.yaml
+  (not sure if this will actually create, but you get the idea)
 
- apiVersion: v1
- kind: Pod
- spec:
-   containers:
-   - name: kubia
-     ports:
-     - name: http
-       containerPort: 8080
-     - name: https
-       containerPort: 8443
-
-Then in the Service manifest, you can refer to the target ports 
-by their names:
-
- apiVersion: v1
- kind: Service
- spec:
-   ports:
-   - name: http
-     port: 80
-     targetPort: http
-   - name: https:
-     port: 443
-     targetPort: https
-   selector:
-     app: kubia
+  The benefit of using names in your spec is that you can
+  easily switch ports without updating many fields in your
+  spec, you just need to update in 1 location. The rest 
+  of the places it is referenced by name and will pick up the change.
 
 
 Service Discovery
 -----------------
-Kubernetes provides ways for client pods to discover a service ip and port
-using:
-  environment variables
-  dns
+A Service IP address will not change during the lifetime of the
+Service.
+ - Pods may come and go independent of the Service
+ - Some pods will come into existence before the Service, others after
+   Both types of Pods will need a way to find the Service
+
+- ways for client pods to discover a service ip and port:
+  - environment variables
+  - dns
 
 Env Variables
 -------------
@@ -250,27 +254,28 @@ Env Variables
 
 to see what environment variables are available inside a pod:
 $ kubectl exec kubia-2jai3n env
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-HOSTNAME=kubia-b2xcx
-KUBERNETES_SERVICE_PORT=443
-KUBERNETES_PORT_443_TCP_PROTO=tcp
-KUBIA_SERVICE_PORT=80
-KUBIA_PORT_80_TCP_PROTO=tcp
-KUBIA_PORT_80_TCP_ADDR=10.99.161.109
-KUBERNETES_PORT=tcp://10.96.0.1:443
-KUBERNETES_PORT_443_TCP_ADDR=10.96.0.1
-KUBIA_SERVICE_HOST=10.99.161.109
-KUBIA_PORT=tcp://10.99.161.109:80
-KUBIA_PORT_80_TCP=tcp://10.99.161.109:80
-KUBIA_PORT_80_TCP_PORT=80
-KUBERNETES_SERVICE_HOST=10.96.0.1
-KUBERNETES_PORT_443_TCP=tcp://10.96.0.1:443
-KUBERNETES_SERVICE_PORT_HTTPS=443
-KUBERNETES_PORT_443_TCP_PORT=443
-NPM_CONFIG_LOGLEVEL=info
-NODE_VERSION=7.10.1
-YARN_VERSION=0.24.4
-HOME=/root 
+
+PATH-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOSTNAME-kubia-b2xcx
+KUBERNETES_SERVICE_PORT-443
+KUBERNETES_PORT_443_TCP_PROTO-tcp
+KUBIA_SERVICE_PORT-80
+KUBIA_PORT_80_TCP_PROTO-tcp
+KUBIA_PORT_80_TCP_ADDR-10.99.161.109
+KUBERNETES_PORT-tcp://10.96.0.1:443
+KUBERNETES_PORT_443_TCP_ADDR-10.96.0.1
+KUBIA_SERVICE_HOST-10.99.161.109
+KUBIA_PORT-tcp://10.99.161.109:80
+KUBIA_PORT_80_TCP-tcp://10.99.161.109:80
+KUBIA_PORT_80_TCP_PORT-80
+KUBERNETES_SERVICE_HOST-10.96.0.1
+KUBERNETES_PORT_443_TCP-tcp://10.96.0.1:443
+KUBERNETES_SERVICE_PORT_HTTPS-443
+KUBERNETES_PORT_443_TCP_PORT-443
+NPM_CONFIG_LOGLEVEL-info
+NODE_VERSION-7.10.1
+YARN_VERSION-0.24.4
+HOME-/root 
 
 
 -from the list of environment variables you can see that the
@@ -286,10 +291,16 @@ So if you had a database service, you can name it backend-database,
 then its env would be BACKEND_DATABASE_SERVICE_HOST and 
 BACKEND_DATABASE_SERVICE_PORT
 
+The limitation of env variables is that the service needs to be up
+before the pod. But then your pod will not be able to access 
+any services that get created after your pod was created.
 
 Service Discovery thru DNS
 --------------------------
 In the kube-system namespace, you can find the DNS service called kube-dns
+This Service is tied to pods that run a DNS server which all other pods
+in the cluster are configured to use for DNS querys from the processes in 
+the pods.
 
 -to switch namespace
  $ kubectl config set-context $(kubectl config current-context) --namespace kube-system
@@ -312,9 +323,9 @@ All the pods in the cluster are configured to use this dns
        backend-database.default.svc.cluster.local
 
    the fqdn is broken up into parts: servicename.namespace.cluster domain suffix
-      so service-name = backend-database
-         namespace = default
-         cluster-domain-suffix = svc.cluster.local
+      so service-name - backend-database
+         namespace - default
+         cluster-domain-suffix - svc.cluster.local
    
    dns only provides the host. the client must know the port number, which
    means you should keep to standard ports (80, 443, 1521 etc), if not
@@ -379,7 +390,7 @@ When you do a describe on a servce, you will see the endpoint resources:
    Namespace:         default
    Labels:            <none>
    Annotations:       <none>
-   Selector:          app=kubia
+   Selector:          app-kubia
    Type:              ClusterIP
    IP:                10.99.161.109
    Port:              <unset>  80/TCP
@@ -422,13 +433,6 @@ Creating a Service
 
  eg external-service.yml
 
- apiVersion: v1
- kind: Service
- metadata:
-   name: external-service
- spec:
-    ports:
-    - port: 80
 
 -the endpoints service name should match the Service name
 
@@ -466,7 +470,7 @@ Creating an Alias for an external service
 Say you have an external service you want to make use of like api.vendorco.com
 and you want to create an alias for this service so that inside your
 cluster, you can reference the external service using the alias. To do so:
- - create a Service resource with spec.type = ExternalName
+ - create a Service resource with spec.type - ExternalName
 
  eg:
    apiVersion: v1
@@ -494,7 +498,7 @@ of its fqdn api.vendorco.com
 
 
 Exposing Services to External Clients
-=====================================
+-------------------------------------
 
 There are 3 main ways to expose your own service to external clients
  * nodeport service
@@ -538,7 +542,7 @@ NodePort Service
       accessible on every node on that designated nodeport (30123)
 
 - you should be able to get the IPs of all your nodes by jsonpath (simpilar to xpath) :
-  $ kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}'
+  $ kubectl get nodes -o jsonpath-'{.items[*].status.addresses[?(@.type--"ExternalIP")].address}'
   
 - on minikube, you can access NodePort services through the command:
   $ minikube service <service-name> -n <namespace> 
@@ -697,7 +701,9 @@ running on the cluster
 
 Creating an ingress resource
 ----------------------------
-kubia-ingress.yml
+eg kubia-ingress.yml
+
+Ingress resources are the endpoints to the service.
 
 apiVersion: extensions/v1beta1
 kind: Ingress
@@ -842,10 +848,10 @@ Configuring Ingress to Handle TLS Traffic
    Generating RSA private key, 2048 bit long modulus
    ... (file called tls.key is created - the private key)
 
- $ openssl req -new -x509 -key tls.key -out tls.cert -days 360 -subj /CN=kubia.example.com
+ $ openssl req -new -x509 -key tls.key -out tls.cert -days 360 -subj /CN-kubia.example.com
    ... (file called tls.cert is created - the certificate)
 
- $ kubectl create secret tls tls-secret --cert=tls.cert --key=tls.key
+ $ kubectl create secret tls tls-secret --cert-tls.cert --key-tls.key
    secret/tls-secret created
 
    Now the private key and certificate are stored in a Secret called tls-secret.
@@ -893,7 +899,7 @@ Configuring Ingress to Handle TLS Traffic
 
 
 Readiness Probes (Signaling when a Pod is Ready) 
-================================================
+------------------------------------------------
 A pod or application spinning up takes some time before it can accept
 requests
 - a readiness probe is needed in order for the pod to be able to
@@ -904,7 +910,7 @@ requests
 - the readiness probe implemetation detail is specific to the app,
   and the responsibility of the app developer
 
-Like the liveness probe, there are 3 types
+Like the liveness probe, there are 3 types of readiness probes
 1. exec probe checks the processes exit code
 2. HTTP GET probe sends a HTTP GEt request to the container, and the
    container responds if it is ready or not
@@ -929,25 +935,9 @@ Adding a readiness probe
 ------------------------
 You can add a readiness probe to a live replication controller definition:
 
- $ kubectl edit rc kubia
-
- apiVerison: v1
- kind: ReplicationController
- ...
- spec:
-    ...
-   template:
-   ...
-     spec:
-       containers:
-       - name: kubia
-         image: luksa/kubia
-         readinessProbe:
-           exec:
-             command:
-             - ls
-             - /var/ready
-   ...
+    eg kubia-rc-readiness.yaml
+      is like kubia-rc.yaml, but with a exec readiness that just executes
+      a simple ls command on a dir
 
  This is a simple readiness probe.
  The ls command returns 0 if the file exists, non-zero exit code otherwise.
@@ -979,13 +969,13 @@ You can add a readiness probe to a live replication controller definition:
 
  You can also define your pod label so that you can manually
  add and remove a pod with a simple label change
-   eg: enabled=true
+   eg: enabled-true
  as a label to your pod and label selector, then remove this 
  label or set to false when you want to take the pod out
  of service
 
 Notes about Readiness Probes
-===========================
+---------------------------
 -all pods should have readiness probes, otherwise they will
  be added to a service endpoint immediately, even if they
  are not ready
@@ -1003,19 +993,40 @@ A headless service in kubernetes is a service without a load balancer.
  service provides, but rather, as many ips as there are pods in the
  kubernetes cluster.
 
+Why would you need a headless service?
+ - you have a client that needs to connect to all pods, 
+     eg to do appdynamics or
+        log forwarding (splunk)
+
+ - the way to implement headless service is to have the client
+   discover pod ips through dns lookups
+      usually when you do a dns lookup, the dns server will return
+      a single ip, the service's cluster ip, but if you 
+      configure the service to have no cluster ip (ClusterIP: None)
+      the DNS server will return the pod ips instead of the single
+      service ip
+      - instead of getting back 1 ip, you will get back multiple
+        A records, each pointing to the individual pods
+        backing the service at that moment
+      - clients can then use that information to connect to all the pods
+
 -to create a headless service, set the clusterIP to None in the spec:
  eg: kubia-headless.yml
 
- apiVersion: v1
- kind: Service
- metadata:
-   name: kubia-headless
- spec: 
-   clusterIP: None
-   ports:
-   - port: 80
-     targetPort: 8080
-   selector:
-     app: kubia
+  > kubectl create -f kubia-headless.yaml
 
+ Once you create the service, you can inspect it with kubectl get/describe
+ and you should see no cluster ip, and its endpoint will include part of 
+ the pods matching its pod selector
+
+Discovering Unready Pods
+------------------------
+If you need to find all pods matching the service selector, regardless
+of it's readiness status, you add an annotation to it:
+  ...
+  kind: Service
+  metadata:
+    annotations:
+      service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  ...
 
