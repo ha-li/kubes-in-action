@@ -3,11 +3,8 @@ Volumes - attaching disk storage to containers
 containers can access external storage through the use of volumes
 -can be used to share storage between multiple containers
 
--pods are like logical hosts
--containers house processes that run inside the logical hosts
--the processes share resources including cpu, ram, network interfaces
--disk does not get shared between the containers because each container has its own
- isolated filesystem
+-disk/filesystem does not get shared between containers 
+ because each container has its own isolated filesystem
 
 -each filesystem in the container starts off the same in each container
 -as the processes in the container runs, the file system is altered, but these
@@ -32,10 +29,13 @@ containers can access external storage through the use of volumes
 - a volume is available to all containers on the pod, but must be mounted on each
   container that needs access to it
 - in a container, the volume can be mounted anywhere in the containers filesystem
+- Types of Volumes: EmptyDir, GitRepo, HostPath
+
+- PersistentVolume/PersistentVolumeClaim
 
 
 eg of a use of a volume
-=======================
+-----------------------
 
 Consider a pod that has 3 containers
  - a web-server container
@@ -61,7 +61,8 @@ Consider a pod that has 3 containers
 
 
 Types of Volumes
-================
+----------------
+Many types of Volumes exists
 -emptyDir - the volumes start of empty and gets filled
 -hostPath - a directory from the nodes filesystem gets mounted into the pod
 -gitRepo  - a volume initialized from a git repo
@@ -86,30 +87,12 @@ EmptyDir Volume
  for a container
 
 eg of a emptydir volume in the pod spec
+  fortune-emptyvol.yaml
 
-apiVersion: v1
-kind: Pod
-metadata:
-  name: fortune
-spec:
-  containers:
-  - image: luksa/fortune
-    name: html-generator
-    volumeMounts:
-    - name: html
-      mountPath: /var/htdocs
-  - image: nginx:alpine
-    name: web-server
-    volumeMounts:
-    - name: html
-      mountPath: /usr/share/nginx/html
-      readOnly: true
-    ports:
-    - containerPort: 80
-      protocol: TCP
-  volumes:
-  - name: html
-    emptyDir: {}
+ When creating an empty volume, you specify the volumes in a stanza,
+ then you can use the name of that volume to specify:
+    mountPath
+    readOnly 
 
 this spec declares 2 containers (luksa/fortune) and nginx:alpine,
 and an emptyDir volume called html. The emptyDir volume is used in both 
@@ -126,7 +109,9 @@ tmpfs filesystem (in memory). To do so, set the medium to Memory eg
          medium: Memory
 
 
-GitRepo volume is a emptyDir volume that clones a git repo, checking out a specific
+GitRepo volume 
+--------------
+-is a emptyDir volume that clones a git repo, checking out a specific
 revision when the pod is starting up
 
 To declare a gitRepo volume, see the above spec which the volumes stanza as:
@@ -191,7 +176,7 @@ on the same node and using the same path on the hostPath volume will see the sam
 
 
 Persistent Storage Volumes
-==========================
+--------------------------
 in order to use a volume for storage, you need to be able to make the volume available on
 any node that the pod may be moved to in the future.
  - it must be stored on a network attached storage (SAN)
