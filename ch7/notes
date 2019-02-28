@@ -1,4 +1,5 @@
-This chapter is about configmap volumes and secret volumes
+Configmap and Secret Volumes
+----------------------------
 
 both configmap and secret volumes are ways to pass in configuration into a kubernetes pod.
  - configmap volumes are for regular configurations (regular configurations)
@@ -6,10 +7,17 @@ both configmap and secret volumes are ways to pass in configuration into a kuber
 
 
 topics of review
+----------------
 -docker review
 -specifying arguments to pass config options to container using command line arguments 
--using env variables as a way to config container
--using configmap volumes
+-env variables as a way to config container
+-configmap volumes, how to create them from:
+    literals
+    file
+    directory
+    manifest yaml
+-secrets
+-default token
 
 Overriding Docker default commands and arguments
 -----------------------------------------------
@@ -31,6 +39,10 @@ ENTRYPOINT supports two forms:
 -  shell form ENTRYPOINT node app.js
 -  exec form ENTRYPOINT ["node", "app.js"]
 
+exec is the preferred form because it does not run a shell before the 
+command, so node will have a pid of 1
+
+
 
 to build haja/fortune:args:
  docker build -t docker.io/haja/fortune:args .
@@ -46,11 +58,12 @@ To see the contents of the file generated on the docker image:
 
 you should see a new file generated every 10 secs (from ch6) and x secs from this chapter 
 
------------------------
-Overrideing command and arguments in Kubernets
 
-If you are building a kubernetes pod, you can choose to override the container ENTRYPOINT and
-CMD. To do that, in the spec:
+Overriding command and arguments in Kubernets
+----------------------------------------------
+
+You can choose to override the container ENTRYPOINT and CMD. 
+To do that, in the spec:
 
 apiVersion: v1
 kind: Pod
@@ -67,31 +80,7 @@ spec:
 
 So using the above, we can create a pod spec that overrides a CMD argument:
 
-> vi fortune-override-args.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: fortune-override
-spec:
-  containers:
-  - image: haja/fortune:args
-    args: ["2"]                    <---- this is an override of content from ch6
-    name: html-generator
-    volumeMounts:
-    - name: html
-      mountPath: /var/htdocs
-  - image: nginx:alpine
-    name: web-server
-    volumeMounts:
-    - name: html
-      mountPath: /usr/share/nginx/html
-      readOnly: true
-    ports:
-    - containerPort: 80
-      protocol: TCP
-  volumes:
-  - name: html
-    emptyDir: {}
+  > eg fortune-args/fortune-override-args.yaml
 
 the changes above means 2 is the arg to fortune:args, which means the loop runs every 2 secs
 and generates a new /var/htdocs/index.html every 2 secs, vs in ch6, it was always 10 secs
@@ -110,14 +99,11 @@ spec:
     name: html-generator
 ...
 
-to see the kubernetes pod spec for overriding default arguments see contents of fortune-args
-
-----------------------------------------------
-One way to pass configurations into a container is by using environment variables.
-Its not the best way, but it does work and for simple tests, it is good enough
-
 
 Specifying Environment Variables in a Container Definition
+----------------------------------------------------------
+One way to pass configurations into a container is by using environment variables.
+Its not the best way, but it does work and for simple tests, it is good enough
 
 you can pass environment variables to a container in the pod spec:
 -there is not an option to define a pod env variable and have all containers in the pod inherit it
@@ -176,7 +162,9 @@ As mentioned, there are two types of resources for passing in configurations
 
 ConfigMaps
 ----------
-ConfigMaps are objects that hold key/value pairs. The values can be short literals to full config files
+ConfigMaps are objects that hold key/value pairs. 
+The values can be short literals to full config files
+
 
 Applications doesn't need to read the config map directly, or even know that it exists.
 The contents of the config map are passed to containers either as environment variables or
