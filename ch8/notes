@@ -74,11 +74,23 @@ To create the resource then see the volume content and the file content
  > kubectl exec downward-volume -- ls -l /etc/download
  > kubectl exec downward-volume -- more /etc/download/labels
 
+When creating a downwardAPI volume, you declare the volume type, and populate
+items with:
+  path value and
+  reference value 
+
+  The path value becomes a file in the downward volume and the reference value the content 
+  of the file.
+
+Labels/annotations may be modified while the pod is running. The downward volume will always
+reflect the most current information, so it will be current.
+
 The reason that labels and annotations are only available through volume is because they can
 be modified while a pod is running, so when they change, kubernetes will update the files,
 allowing the pod to see the up to date value. You just have to write your application to
 read the value in real time when they get updated.
- Environment variables on the other hand cannot be updated once they are created, which is
+
+Environment variables on the other hand cannot be updated once they are created, which is
 why pod labels and annotations are not exposed through env variables.
 
 When you are exposing a container-level metadata (such as container resource limit/request)
@@ -88,6 +100,7 @@ at the pod level.
 
 Downward volumes can be used to expose a 2nd containers resource limit/request to another
 container (in contrast an env variable cannot) provided they are in the same pod.
+
 
 
 
